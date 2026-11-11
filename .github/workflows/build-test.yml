@@ -112,7 +112,15 @@ jobs:
 
       - name: Build release APKs
         working-directory: upstream
-        run: ./gradlew --no-daemon :app:assembleRelease -Pcore=mihomo
+        run: ./gradlew --no-daemon :app:assembleRelease -Pcore=mihomo 2>&1 | tee ../build.log
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-logs
+          name: CI build logs
+          files: build.log
 
       - name: Sign release APKs
         shell: bash
