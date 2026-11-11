@@ -111,6 +111,7 @@ jobs:
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ndk_version" >> "$GITHUB_ENV"
 
       - name: Build release APKs
+        shell: bash
         working-directory: upstream
         run: ./gradlew --no-daemon :app:assembleRelease -Pcore=mihomo 2>&1 | tee ../build.log
 
@@ -158,12 +159,19 @@ jobs:
             "$apksigner" verify "$signed_apk"
           done
           ls -la signed-apks
+          shopt -s nullglob
+          apks=(signed-apks/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::No signed APKs produced"
+            exit 1
+          fi
 
       - name: Publish test release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: test-${{ github.run_number }}
           name: HevFix Test ${{ github.run_number }}
+          fail_on_unmatched_files: true
           prerelease: true
           body: |
             AsteriskMETA Hev TUN 进程匹配修复测试包。
