@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          url="https://github.com/Roiyaru/AndroidLibClashLite/releases/download/v1.19.34-android.1-fix1/libclash.aar"
+          url="https://github.com/Roiyaru/AndroidLibClashLite/releases/download/v1.19.34-android.1-fix2/libclash.aar"
           for i in $(seq 1 40); do
             if curl -fsIL --max-time 30 "$url" >/dev/null 2>&1; then
               echo "libclash.aar is available"
