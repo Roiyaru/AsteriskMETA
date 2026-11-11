@@ -45,6 +45,12 @@ jobs:
           git -C upstream submodule update --init --recursive
           patch -d upstream -p1 < patches/ameta-source.patch
           (cd upstream/hevtun/src/main/jni && patch -p1 < "$GITHUB_WORKSPACE/patches/hev-src-port.patch")
+          # The build's SyncGitSubmoduleVersionTask requires a clean submodule tree
+          # and force-checks-out the configured tag, so commit the hev patches in the
+          # submodule (and nested core) and move the tag onto the patched commit.
+          HEV=upstream/hevtun/src/main/jni/hev-socks5-tunnel
+          (cd "$HEV/src/core" && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm "HevFix: add client bind_port")
+          (cd "$HEV" && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm "HevFix: preserve original flow source port" && git tag -f 2.19.3)
           chmod +x upstream/gradlew
 
       - name: Set up JDK
