@@ -1,6 +1,6 @@
 [submodule "hevtun/src/main/jni/hev-socks5-tunnel"]
 	path = hevtun/src/main/jni/hev-socks5-tunnel
-	url = https://github.com/heiher/hev-socks5-tunnel
+	url = https://github.com/Roiyaru/hev-socks5-tunnel
 [submodule "asteriskd/src/main/native"]
 	path = asteriskd/src/main/native
 	url = https://github.com/Asterisk4Magisk/asteriskd.git
