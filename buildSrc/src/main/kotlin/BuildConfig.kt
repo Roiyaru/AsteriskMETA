@@ -26,6 +26,10 @@ object ProjectConfig {
 }
 
 fun org.gradle.api.Project.getGitVersionCode(): Int {
+    // This fork keeps a squashed history, so the commit count no longer reflects the
+    // upstream release order. Prefer an explicit versionCode and keep the count as the
+    // fallback for a full-history checkout.
+    providers.gradleProperty("versionCode").orNull?.let { value -> return value.toInt() }
     return providers.exec {
         commandLine("git", "rev-list", "--count", "HEAD")
     }.standardOutput.asText.get().trim().toInt()
