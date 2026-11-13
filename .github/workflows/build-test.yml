@@ -190,7 +190,8 @@ jobs:
           set -euo pipefail
           # The debug variant keeps the runner's throwaway debug signature and a separate
           # application id (org.asterisk.zcc.ameta.dev.debug) for ad-hoc on-device testing.
-          debug_apk="$(find app/build/outputs/apk/debug -type f -name '*-arm64-v8a.apk' | head -n 1)"
+          find app/build/outputs/apk -type f -name '*.apk' | sort
+          debug_apk="$(find app/build/outputs/apk/debug -type f -name '*arm64-v8a*' | head -n 1)"
           if [ -z "$debug_apk" ]; then
             echo "::error::No arm64-v8a debug APK was produced."
             exit 1
