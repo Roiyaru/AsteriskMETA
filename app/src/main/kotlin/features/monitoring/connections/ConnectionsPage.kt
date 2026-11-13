@@ -329,8 +329,8 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
                                     },
                                 )
                                 is ConnectionAppRow.Link -> connectionCardItem(
-                                    connection = row.connection,
-                                    modifier = modifier.then(NestedConnectionModifier),
+                                    row.connection,
+                                    modifier.then(NestedConnectionModifier),
                                 )
                             }
                         }
