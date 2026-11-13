@@ -1,0 +1,232 @@
+name: Build Test APK (HevFix)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hevfix-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build patched AsteriskMETA APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Native submodules are required by the release build. This repository's tree
+          # is the patched base, so no upstream clone is needed.
+          submodules: recursive
+
+      - name: Wait for libclash.aar release
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/Roiyaru/AndroidLibClashLite/releases/download/v1.19.34-android.1-fix2/libclash.aar"
+          for i in $(seq 1 40); do
+            if curl -fsIL --max-time 30 "$url" >/dev/null 2>&1; then
+              echo "libclash.aar is available"
+              exit 0
+            fi
+            echo "waiting for libclash.aar ($i/40)"
+            sleep 45
+          done
+          echo "::error::libclash.aar did not become available in time"
+          exit 1
+
+      - name: Apply source patches
+        run: |
+          set -euo pipefail
+          patch -p1 < patches/ameta-source.patch
+          (cd hevtun/src/main/jni && patch -p1 < "$GITHUB_WORKSPACE/patches/hev-src-port.patch")
+          # The build's SyncGitSubmoduleVersionTask requires a clean submodule tree
+          # and force-checks-out the configured tag, so commit the hev patches in the
+          # submodule (and nested core) and move the tag onto the patched commit.
+          HEV=hevtun/src/main/jni/hev-socks5-tunnel
+          (cd "$HEV/src/core" && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm "HevFix: add client bind_port")
+          (cd "$HEV" && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm "HevFix: preserve original flow source port" && git tag -f 2.19.3)
+          chmod +x gradlew
+
+      - name: Resolve version code
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The previous test builds shipped versionCode 500 and this fork keeps a
+          # squashed history, so derive a monotonic value from the run number.
+          version_code="$((500 + GITHUB_RUN_NUMBER))"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+          echo "Using versionCode=$version_code"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "26"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          licenses_status="${PIPESTATUS[1]}"
+          set -o pipefail
+          if [ "$licenses_status" -ne 0 ]; then
+            echo "::error::Failed to accept Android SDK licenses."
+            exit "$licenses_status"
+          fi
+
+          target_sdk="$(sed -n 's/^[[:space:]]*const val TARGET_SDK = \([0-9]\+\).*/\1/p' buildSrc/src/main/kotlin/BuildConfig.kt | head -n 1)"
+          target_sdk_minor="$(sed -n 's/^[[:space:]]*const val TARGET_SDK_MINOR = \([0-9]\+\).*/\1/p' buildSrc/src/main/kotlin/BuildConfig.kt | head -n 1)"
+          if [ -z "$target_sdk" ] || [ -z "$target_sdk_minor" ]; then
+            echo "::error::Unable to read TARGET_SDK from ProjectConfig."
+            exit 1
+          fi
+
+          available_packages="$(sdkmanager --list | awk '{ print $1 }')"
+          platform_package="platforms;android-${target_sdk}"
+          if ! grep -Fxq "$platform_package" <<< "$available_packages"; then
+            if grep -Fxq "platforms;android-${target_sdk}.0" <<< "$available_packages"; then
+              platform_package="platforms;android-${target_sdk}.0"
+            else
+              echo "::error::No Android SDK platform package is available for TARGET_SDK=$target_sdk."
+              exit 1
+            fi
+          fi
+
+          build_tools_package="$(printf '%s\n' "$available_packages" | awk '$1 ~ /^build-tools;[0-9]/ { print $1 }' | sort -V | tail -n 1)"
+          ndk_package="$(printf '%s\n' "$available_packages" | awk '$1 ~ /^ndk;[0-9]/ { print $1 }' | sort -V | tail -n 1)"
+          cmake_package="$(printf '%s\n' "$available_packages" | awk '$1 ~ /^cmake;[0-9]/ { print $1 }' | sort -V | tail -n 1)"
+
+          for pkg in "$build_tools_package" "$ndk_package" "$cmake_package"; do
+            if [ -z "$pkg" ]; then
+              echo "::error::Missing required SDK package."
+              exit 1
+            fi
+          done
+
+          sdkmanager --install "$platform_package" "platforms;android-${target_sdk}.${target_sdk_minor}" "$build_tools_package" "$ndk_package" "$cmake_package"
+
+          ndk_version="${ndk_package#ndk;}"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk_version" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ndk_version" >> "$GITHUB_ENV"
+
+      - name: Build release and debug APKs
+        shell: bash
+        run: ./gradlew --no-daemon :app:assembleRelease :app:assembleDebug -Pcore=mihomo -PversionCode="$VERSION_CODE" 2>&1 | tee build.log
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-logs
+          name: CI build logs
+          files: build.log
+
+      - name: Sign release APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          openssl pkcs12 -export \
+            -out "$RUNNER_TEMP/test.p12" \
+            -inkey signing/key.pem \
+            -in signing/cert.pem \
+            -name testkey \
+            -passout pass:androidtest
+
+          zipalign="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$zipalign" ] || [ -z "$apksigner" ]; then
+            echo "::error::zipalign/apksigner not found."
+            exit 1
+          fi
+
+          mkdir -p signed-apks
+          shopt -s nullglob
+          for apk in app/build/outputs/apk/release/*.apk; do
+            base_name="$(basename "$apk" .apk)"
+            aligned_apk="$RUNNER_TEMP/${base_name}-aligned.apk"
+            signed_apk="signed-apks/${base_name}-signed.apk"
+            "$zipalign" -f -p 4 "$apk" "$aligned_apk"
+            "$apksigner" sign \
+              --ks "$RUNNER_TEMP/test.p12" \
+              --ks-pass pass:androidtest \
+              --ks-key-alias testkey \
+              --key-pass pass:androidtest \
+              --out "$signed_apk" \
+              "$aligned_apk"
+            "$apksigner" verify "$signed_apk"
+          done
+          ls -la signed-apks
+          shopt -s nullglob
+          apks=(signed-apks/*.apk)
+          if [ ${#apks[@]} -eq 0 ]; then
+            echo "::error::No signed APKs produced"
+            exit 1
+          fi
+
+      - name: Collect debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The debug variant keeps the runner's throwaway debug signature and a separate
+          # application id (org.asterisk.zcc.ameta.dev.debug) for ad-hoc on-device testing.
+          find app/build/outputs/apk -type f -name '*.apk' | sort
+          debug_apk="$(find app/build/outputs/apk/debug -type f -name '*arm64-v8a*' | head -n 1)"
+          if [ -z "$debug_apk" ]; then
+            echo "::error::No arm64-v8a debug APK was produced."
+            exit 1
+          fi
+          cp "$debug_apk" signed-apks/AsteriskMETA-debug-arm64-v8a.apk
+          ls -l signed-apks
+
+      - name: Publish test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-${{ github.run_number }}
+          name: App Grouping Test ${{ github.run_number }}
+          files: signed-apks/*.apk
+          fail_on_unmatched_files: true
+          prerelease: true
+          body: |
+            AsteriskMETA 连接监控「应用」分组测试包。
+            - Release 包名 `org.asterisk.zcc.ameta.dev`（与官方包并存，可覆盖历史测试包），测试签名与历史 test-* 一致
+            - Debug 包名 `org.asterisk.zcc.ameta.dev.debug`（可调试，独立签名，可与 Release 包同时安装）
+            - versionCode `${{ steps.version.outputs.version_code }}`
+            - 新增：连接监控筛选栏「应用」——按应用分组显示图标、名称与连接数，点击展开该应用的全部活跃连接
+            - 保留：Hev TUN（免 Root VPN）模式下连接监控的进程/应用识别修复
+            测试方式：安装 arm64-v8a 包 -> 开启代理 -> 连接监控 -> 切换「应用」筛选。
+
+      - name: Verify release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: test-${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"'
+          count="$(gh release view "$TAG" --json assets --jq '.assets | length')"
+          if [ "$count" -lt 1 ]; then
+            echo "::error::Release $TAG has no assets."
+            exit 1
+          fi
+          echo "published $count assets"
