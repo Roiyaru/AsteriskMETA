@@ -1,4 +1,4 @@
-name: Build Test APK (App grouping)
+name: Build Test APK (HevFix)
 
 on:
   workflow_dispatch:
@@ -22,8 +22,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # Native submodules are required by the release build. The tree in this
-          # repository is the patched base, so no upstream clone is needed.
+          # Native submodules are required by the release build. This repository's tree
+          # is the patched base, so no upstream clone is needed.
           submodules: recursive
 
       - name: Wait for libclash.aar release
@@ -43,10 +43,8 @@ jobs:
           exit 1
 
       - name: Apply source patches
-        shell: bash
         run: |
           set -euo pipefail
-
           patch -p1 < patches/ameta-source.patch
           (cd hevtun/src/main/jni && patch -p1 < "$GITHUB_WORKSPACE/patches/hev-src-port.patch")
           # The build's SyncGitSubmoduleVersionTask requires a clean submodule tree
@@ -62,8 +60,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The previous test builds shipped versionCode 500; keep the series monotonic so
-          # the APK upgrades in place over an installed test build.
+          # The previous test builds shipped versionCode 500 and this fork keeps a
+          # squashed history, so derive a monotonic value from the run number.
           version_code="$((500 + GITHUB_RUN_NUMBER))"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "VERSION_CODE=$version_code" >> "$GITHUB_ENV"
@@ -131,9 +129,9 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk_version" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ndk_version" >> "$GITHUB_ENV"
 
-      - name: Build release APKs
+      - name: Build release and debug APKs
         shell: bash
-        run: ./gradlew --no-daemon :app:assembleRelease -Pcore=mihomo -PversionCode="$VERSION_CODE" 2>&1 | tee build.log
+        run: ./gradlew --no-daemon :app:assembleRelease :app:assembleDebug -Pcore=mihomo -PversionCode="$VERSION_CODE" 2>&1 | tee build.log
 
       - name: Upload build logs on failure
         if: failure()
@@ -186,6 +184,20 @@ jobs:
             exit 1
           fi
 
+      - name: Collect debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The debug variant keeps the runner's throwaway debug signature and a separate
+          # application id (org.asterisk.zcc.ameta.dev.debug) for ad-hoc on-device testing.
+          debug_apk="$(find app/build/outputs/apk/debug -type f -name '*-arm64-v8a.apk' | head -n 1)"
+          if [ -z "$debug_apk" ]; then
+            echo "::error::No arm64-v8a debug APK was produced."
+            exit 1
+          fi
+          cp "$debug_apk" signed-apks/AsteriskMETA-debug-arm64-v8a.apk
+          ls -l signed-apks
+
       - name: Publish test release
         uses: softprops/action-gh-release@v2
         with:
@@ -196,9 +208,9 @@ jobs:
           prerelease: true
           body: |
             AsteriskMETA 连接监控「应用」分组测试包。
-            - 独立包名 `org.asterisk.zcc.ameta.dev`（与官方包并存安装，可直接覆盖历史测试包）
-            - 独立测试签名（`signing/` 目录内的测试密钥），与历史 test-* 构建一致
-            - versionCode `${{ steps.version.outputs.version_code }}`，可直接升级安装
+            - Release 包名 `org.asterisk.zcc.ameta.dev`（与官方包并存，可覆盖历史测试包），测试签名与历史 test-* 一致
+            - Debug 包名 `org.asterisk.zcc.ameta.dev.debug`（可调试，独立签名，可与 Release 包同时安装）
+            - versionCode `${{ steps.version.outputs.version_code }}`
             - 新增：连接监控筛选栏「应用」——按应用分组显示图标、名称与连接数，点击展开该应用的全部活跃连接
             - 保留：Hev TUN（免 Root VPN）模式下连接监控的进程/应用识别修复
             测试方式：安装 arm64-v8a 包 -> 开启代理 -> 连接监控 -> 切换「应用」筛选。
