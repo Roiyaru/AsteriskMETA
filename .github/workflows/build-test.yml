@@ -1,4 +1,4 @@
-name: Build Test APK (HevFix)
+name: Build Test APK (App grouping)
 
 on:
   workflow_dispatch:
@@ -21,6 +21,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Native submodules are required by the release build. The tree in this
+          # repository is the patched base, so no upstream clone is needed.
+          submodules: recursive
 
       - name: Wait for libclash.aar release
         shell: bash
@@ -38,20 +42,32 @@ jobs:
           echo "::error::libclash.aar did not become available in time"
           exit 1
 
-      - name: Fetch upstream sources
+      - name: Apply source patches
+        shell: bash
         run: |
           set -euo pipefail
-          git clone https://github.com/Asterisk4Magisk/AsteriskMETA upstream
-          git -C upstream submodule update --init --recursive
-          patch -d upstream -p1 < patches/ameta-source.patch
-          (cd upstream/hevtun/src/main/jni && patch -p1 < "$GITHUB_WORKSPACE/patches/hev-src-port.patch")
+
+          patch -p1 < patches/ameta-source.patch
+          (cd hevtun/src/main/jni && patch -p1 < "$GITHUB_WORKSPACE/patches/hev-src-port.patch")
           # The build's SyncGitSubmoduleVersionTask requires a clean submodule tree
           # and force-checks-out the configured tag, so commit the hev patches in the
           # submodule (and nested core) and move the tag onto the patched commit.
-          HEV=upstream/hevtun/src/main/jni/hev-socks5-tunnel
+          HEV=hevtun/src/main/jni/hev-socks5-tunnel
           (cd "$HEV/src/core" && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm "HevFix: add client bind_port")
           (cd "$HEV" && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm "HevFix: preserve original flow source port" && git tag -f 2.19.3)
-          chmod +x upstream/gradlew
+          chmod +x gradlew
+
+      - name: Resolve version code
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The previous test builds shipped versionCode 500; keep the series monotonic so
+          # the APK upgrades in place over an installed test build.
+          version_code="$((500 + GITHUB_RUN_NUMBER))"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+          echo "Using versionCode=$version_code"
 
       - name: Set up JDK
         uses: actions/setup-java@v6
@@ -69,7 +85,6 @@ jobs:
 
       - name: Install Android SDK packages
         shell: bash
-        working-directory: upstream
         run: |
           set -euo pipefail
           set +o pipefail
@@ -118,8 +133,7 @@ jobs:
 
       - name: Build release APKs
         shell: bash
-        working-directory: upstream
-        run: ./gradlew --no-daemon :app:assembleRelease -Pcore=mihomo 2>&1 | tee ../build.log
+        run: ./gradlew --no-daemon :app:assembleRelease -Pcore=mihomo -PversionCode="$VERSION_CODE" 2>&1 | tee build.log
 
       - name: Upload build logs on failure
         if: failure()
@@ -150,7 +164,7 @@ jobs:
 
           mkdir -p signed-apks
           shopt -s nullglob
-          for apk in upstream/app/build/outputs/apk/release/*.apk; do
+          for apk in app/build/outputs/apk/release/*.apk; do
             base_name="$(basename "$apk" .apk)"
             aligned_apk="$RUNNER_TEMP/${base_name}-aligned.apk"
             signed_apk="signed-apks/${base_name}-signed.apk"
@@ -176,13 +190,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: test-${{ github.run_number }}
-          name: HevFix Test ${{ github.run_number }}
+          name: App Grouping Test ${{ github.run_number }}
           fail_on_unmatched_files: true
           prerelease: true
           body: |
-            AsteriskMETA Hev TUN 进程匹配修复测试包。
-            - 独立包名 `org.asterisk.zcc.ameta.dev`（与官方包并存安装）
-            - 独立测试签名（signing/ 目录内的测试密钥）
-            - 修复：Hev TUN（免 Root VPN）模式下连接监控进程/应用识别
-            测试方式：安装 arm64-v8a 包 -> 开启代理（VPN Service + Hev TUN）-> 查看连接监控是否显示应用包名。
-          files: signed-apks/*.apk
+            AsteriskMETA 连接监控「应用」分组测试包。
+            - 独立包名 `org.asterisk.zcc.ameta.dev`（与官方包并存安装，可直接覆盖历史测试包）
+            - 独立测试签名（`signing/` 目录内的测试密钥），与历史 test-* 构建一致
+            - versionCode `${{ steps.version.outputs.version_code }}`，可直接升级安装
+            - 新增：连接监控筛选栏「应用」——按应用分组显示图标、名称与连接数，点击展开该应用的全部活跃连接
+            - 保留：Hev TUN（免 Root VPN）模式下连接监控的进程/应用识别修复
+            测试方式：安装 arm64-v8a 包 -> 开启代理 -> 连接监控 -> 切换「应用」筛选。

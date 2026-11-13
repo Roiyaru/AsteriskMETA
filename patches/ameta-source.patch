@@ -65,7 +65,7 @@ diff -ruN a/buildSrc/src/main/kotlin/BuildConfig.kt b/buildSrc/src/main/kotlin/B
      const val PROJECT_NAME = "AsteriskMETA"
 -    const val VERSION_NAME = "1.2.28-dev"
 -    const val PACKAGE_NAME = "org.asterisk.zcc.ameta"
-+    const val VERSION_NAME = "1.2.28-hevfix1"
++    const val VERSION_NAME = "1.2.28-appgroup"
 +    const val PACKAGE_NAME = "org.asterisk.zcc.ameta.dev"
      const val ASTERISKD_VERSION = "v2.3.0"
      const val BPF2SOCKS_VERSION = "v1.2.2"
