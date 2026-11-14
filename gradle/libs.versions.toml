@@ -1,5 +1,6 @@
 [versions]
 agp = "9.5.1"
+aircompressor = "0.27"
 androidx-activity-compose = "1.13.0"
 androidx-lifecycle = "2.11.0"
 androidx-navigation3 = "1.2.1"
@@ -25,6 +26,7 @@ sora-editor = "0.24.7"
 zxing-android-embedded = "4.3.0"
 
 [libraries]
+aircompressor = { module = "io.airlift:aircompressor", version.ref = "aircompressor" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "androidx-navigation3" }
