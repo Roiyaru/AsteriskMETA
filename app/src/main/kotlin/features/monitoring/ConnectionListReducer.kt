@@ -14,9 +14,6 @@ internal enum class ConnectionRouteFilter {
     App,
     Proxy,
     Direct,
-
-    /** Keeps every route and only changes the list into an application grouping. */
-    App,
 }
 
 /** Whether the filter narrows connections by their route instead of regrouping them. */
