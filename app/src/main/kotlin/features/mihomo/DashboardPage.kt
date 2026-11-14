@@ -383,10 +383,12 @@ fun MihomoDashboardPage(
                                 Text(
                                     text = stringResource(R.string.home_traffic_today),
                                     modifier = Modifier.alignByBaseline(),
-                                    style = MaterialTheme.typography.labelMedium,
+                                    style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
                                 )
-                                Spacer(Modifier.width(8.dp))
+                                Spacer(Modifier.width(6.dp))
                                 Text(
                                     text = monitoringValueText(monitoringOverviewState.todayTrafficBytes.toReadableBytes()),
                                     modifier = Modifier.weight(1f).alignByBaseline(),
@@ -396,26 +398,24 @@ fun MihomoDashboardPage(
                                     ),
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onSurface,
+                                    textAlign = TextAlign.End,
                                     maxLines = 1,
                                     softWrap = false,
-                                    autoSize = TextAutoSize.StepBased(minFontSize = 14.sp, maxFontSize = 22.sp),
+                                    autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 22.sp),
                                 )
                             }
                             Spacer(Modifier.height(8.dp))
-                            Row(
+                            Column(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 TrafficMetric(
                                     label = stringResource(R.string.home_accumulated_upload),
                                     value = formatHomeRuntimeBytes(networkActivityState.accumulatedUploadBytes),
-                                    modifier = Modifier.weight(1f),
                                 )
                                 TrafficMetric(
                                     label = stringResource(R.string.home_accumulated_download),
                                     value = formatHomeRuntimeBytes(networkActivityState.accumulatedDownloadBytes),
-                                    modifier = Modifier.weight(1f),
                                 )
                             }
                         }
@@ -572,14 +572,6 @@ private fun HomeControllerCard(
                     // Fill the 48dp touch target so it adds no invisible vertical gap.
                     minHeight = 48.dp,
                 )
-                if (controllerState.mihomoModeReadOnly) {
-                    Text(
-                        text = stringResource(R.string.settings_value_from_yaml),
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
             }
         }
     }
@@ -1324,14 +1316,15 @@ private fun TrafficMetric(
     value: String,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.semantics(mergeDescendants = true) {
+    Row(
+        modifier = modifier.fillMaxWidth().semantics(mergeDescendants = true) {
             contentDescription = "$label $value"
         },
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
             text = label,
+            modifier = Modifier.weight(1f).alignByBaseline(),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
@@ -1339,12 +1332,15 @@ private fun TrafficMetric(
         )
         Text(
             text = monitoringValueText(value),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.alignByBaseline(),
             style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            softWrap = false,
             overflow = TextOverflow.Ellipsis,
+            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 12.sp),
         )
     }
 }
@@ -1353,10 +1349,10 @@ private fun TrafficMetric(
 private fun runModeLabel(runMode: Int): String {
     return stringResource(
         when (runMode) {
-            RunModeTproxy -> R.string.settings_run_mode_tproxy
-            RunModeTun -> R.string.settings_run_mode_tun
-            RunModeTun2Socks -> R.string.settings_run_mode_tun2socks
-            RunModeBpf2Socks -> R.string.settings_run_mode_bpf2socks
+            RunModeTproxy -> R.string.home_run_mode_tproxy
+            RunModeTun -> R.string.home_run_mode_tun
+            RunModeTun2Socks -> R.string.home_run_mode_tun2socks
+            RunModeBpf2Socks -> R.string.home_run_mode_bpf2socks
             else -> R.string.settings_run_mode_vpn_service
         },
     )

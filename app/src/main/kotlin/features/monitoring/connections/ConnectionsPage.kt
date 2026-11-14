@@ -51,6 +51,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -102,7 +104,7 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
     val context = LocalContext.current
     val iconSizePx = with(LocalDensity.current) { ANDROID_APP_ICON_SIZE_DP.dp.roundToPx() }
     var query by rememberSaveable { mutableStateOf("") }
-    var route by rememberSaveable { mutableStateOf(ConnectionRouteFilter.All) }
+    var route by rememberSaveable { mutableStateOf(ConnectionRouteFilter.App) }
     var sort by rememberSaveable { mutableStateOf(ConnectionSort.Traffic) }
     var selected by remember { mutableStateOf<MihomoConnection?>(null) }
     var expandedAppKeys by remember { mutableStateOf(emptySet<String>()) }
@@ -336,7 +338,7 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
                         }
                     } else {
                         items(visibleConnections, key = MihomoConnection::id) { connection ->
-                            connectionCardItem(connection, ContentWidthModifier)
+                            connectionCardItem(connection, Modifier)
                         }
                     }
                 }
@@ -501,14 +503,19 @@ private fun ConnectionAppGroupCard(
     group: ConnectionAppGroup,
     expanded: Boolean,
     iconSizePx: Int,
-    modifier: Modifier = ContentWidthModifier,
+    modifier: Modifier = Modifier,
     onToggle: () -> Unit,
 ) {
     val label = group.label.ifBlank { stringResource(R.string.monitor_connections_unknown_source) }
     val packageName = group.packageName
+    val connectionCountDescription = pluralStringResource(
+        R.plurals.monitor_connections_app_count,
+        group.connectionCount,
+        group.connectionCount,
+    )
     Card(
         onClick = onToggle,
-        modifier = modifier,
+        modifier = ContentWidthModifier.then(modifier),
         // One step above the connection cards so a group header reads as their parent.
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         shape = MaterialTheme.shapes.large,
@@ -524,26 +531,13 @@ private fun ConnectionAppGroupCard(
             )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = label,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = pluralStringResource(
-                            R.plurals.monitor_connections_app_count,
-                            group.connectionCount,
-                            group.connectionCount,
-                        ),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 if (packageName != null && packageName != label) {
                     Text(
                         text = packageName,
@@ -554,6 +548,15 @@ private fun ConnectionAppGroupCard(
                     )
                 }
             }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = group.connectionCount.toString(),
+                modifier = Modifier.clearAndSetSemantics { contentDescription = connectionCountDescription },
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
+            )
             AsteriskExpansionIndicator(
                 expanded = expanded,
                 contentDescription = stringResource(R.string.monitor_connections_app_details),
@@ -600,7 +603,7 @@ private fun ConnectionCard(
     onOpen: () -> Unit,
     onClose: () -> Unit,
     closeEnabled: Boolean,
-    modifier: Modifier = ContentWidthModifier,
+    modifier: Modifier = Modifier,
     detectedClosedAt: Long? = null,
 ) {
     // The core reports the final outbound first, followed by its enclosing groups.
@@ -608,7 +611,7 @@ private fun ConnectionCard(
     val providerSources = connection.providerChains.filter(String::isNotBlank).distinct().joinToString(" · ")
     Card(
         onClick = onOpen,
-        modifier = modifier,
+        modifier = ContentWidthModifier.then(modifier),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         shape = MaterialTheme.shapes.large,
     ) {
@@ -728,10 +731,9 @@ private fun StatusCard(message: String, loading: Boolean = false) {
 @Composable
 private fun connectionRouteLabel(route: ConnectionRouteFilter): String = stringResource(
     when (route) {
-        ConnectionRouteFilter.All -> R.string.common_all
+        ConnectionRouteFilter.App -> R.string.monitor_filter_app
         ConnectionRouteFilter.Proxy -> R.string.monitor_filter_proxy
         ConnectionRouteFilter.Direct -> R.string.monitor_filter_direct
-        ConnectionRouteFilter.App -> R.string.monitor_filter_app
     },
 )
 
@@ -764,7 +766,7 @@ private fun formatDuration(startedAtMillis: Long?, endedAtMillis: Long? = null):
 private val ContentWidthModifier = Modifier.fillMaxWidth().widthIn(max = 840.dp)
 
 /** Inset applied to the connections listed under their application. */
-private val NestedConnectionModifier = ContentWidthModifier.padding(start = 12.dp)
+private val NestedConnectionModifier = Modifier.padding(start = 12.dp)
 
 private fun Set<String>.toggleAppGroup(key: String): Set<String> =
     if (key in this) this - key else this + key

@@ -10,7 +10,8 @@ import engine.mihomo.runtime.resolvedConnectionRoute
 import java.util.Locale
 
 internal enum class ConnectionRouteFilter {
-    All,
+    /** Keeps every route and only changes the list into an application grouping. */
+    App,
     Proxy,
     Direct,
 
@@ -62,7 +63,7 @@ internal fun clearDisplayedConnections(
 internal fun reduceConnections(
     connections: List<MihomoConnection>,
     query: String = "",
-    route: ConnectionRouteFilter = ConnectionRouteFilter.All,
+    route: ConnectionRouteFilter = ConnectionRouteFilter.App,
     sort: ConnectionSort = ConnectionSort.Traffic,
     descending: Boolean = true,
 ): List<MihomoConnection> {
@@ -70,7 +71,7 @@ internal fun reduceConnections(
     val filtered = connections.filter { connection ->
         val resolvedRoute = connection.resolvedConnectionRoute()
         val matchesRoute = when (route) {
-            ConnectionRouteFilter.All -> true
+            ConnectionRouteFilter.App -> true
             ConnectionRouteFilter.Proxy -> resolvedRoute == ConnectionRouteKind.Proxy
             ConnectionRouteFilter.Direct -> resolvedRoute == ConnectionRouteKind.Direct
             ConnectionRouteFilter.App -> true
