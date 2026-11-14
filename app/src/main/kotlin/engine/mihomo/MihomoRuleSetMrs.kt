@@ -3,10 +3,6 @@
 
 package engine.mihomo
 
-import io.airlift.compress.zstd.ZstdDecompressor
-import io.airlift.compress.zstd.ZstdInputStream
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 
 /** Plain text form of a decoded MRS rule set, matching the payload of a `text` provider. */
@@ -33,7 +29,7 @@ internal object MihomoRuleSetMrs {
     }
 
     fun decode(bytes: ByteArray): MihomoRuleSetContent {
-        val cursor = ByteCursor(inflate(bytes))
+        val cursor = ByteCursor(MihomoZstd.decompress(bytes))
         require(cursor.readBytes(MrsMagic.size).contentEquals(MrsMagic)) {
             "MRS header is invalid"
         }
@@ -49,31 +45,6 @@ internal object MihomoRuleSetMrs {
             else -> cursor.readIpCidrRules()
         }
         return MihomoRuleSetContent(behavior = behavior, rules = rules)
-    }
-
-    private fun inflate(bytes: ByteArray): ByteArray {
-        val declaredSize = ZstdDecompressor.getDecompressedSize(bytes, 0, bytes.size)
-        require(declaredSize <= MaxPayloadBytes) { "MRS payload is too large" }
-        if (declaredSize > 0) {
-            val payload = ByteArray(declaredSize.toInt())
-            val written = ZstdDecompressor().decompress(bytes, 0, bytes.size, payload, 0, payload.size)
-            return if (written == payload.size) payload else payload.copyOf(written)
-        }
-        // A streaming encoder omits the frame content size; read the frame until it ends.
-        val payload = ByteArrayOutputStream()
-        ZstdInputStream(ByteArrayInputStream(bytes)).use { input ->
-            val buffer = ByteArray(InflateBufferSize)
-            var total = 0L
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                if (read == 0) continue
-                total += read
-                require(total <= MaxPayloadBytes) { "MRS payload is too large" }
-                payload.write(buffer, 0, read)
-            }
-        }
-        return payload.toByteArray()
     }
 }
 
@@ -412,8 +383,6 @@ private const val ByteMask = 0xFF
 private const val PrefixSeparator = "/"
 private const val DomainSuffixShorthand = "+."
 private const val InitialDomainKeyCapacity = 64
-private const val InflateBufferSize = 8 * 1024
-private const val MaxPayloadBytes = 64L * 1024 * 1024
 private const val LongShift = 6
 private const val LongMask = 63
 
