@@ -19,6 +19,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.os.Process
+import android.os.SystemClock
 import app.R
 import app.modes.ProxyAppListModeBlacklist
 import app.modes.ProxyAppListModeGlobal
@@ -45,6 +47,7 @@ import java.io.File
 import java.net.InetSocketAddress
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.system.exitProcess
 
 @SuppressLint("VpnServicePolicy")
@@ -162,6 +165,11 @@ class AsteriskVpnService : VpnService() {
                 serviceScope.launch(Dispatchers.Main.immediate) {
                     operationMutex.withLock {
                         withContext(Dispatchers.IO) {
+                            val handledAt = SystemClock.elapsedRealtime()
+                            AndroidAppLogger.info(
+                                LogTag,
+                                "VPN Service took the start request ${handledAt - Process.getStartElapsedRealtime()}ms after the process started",
+                            )
                             val result = runCatching {
                                 startVpn(config)
                                 // A resumed start kept the service in the foreground until now;
@@ -172,6 +180,10 @@ class AsteriskVpnService : VpnService() {
                                 stopVpn()
                                 stopSelfOnMain(startId)
                             }
+                            AndroidAppLogger.info(
+                                LogTag,
+                                "VPN tunnel start took ${SystemClock.elapsedRealtime() - handledAt}ms",
+                            )
                             reply?.sendServiceResult(result)
                         }
                     }
@@ -336,6 +348,7 @@ class AsteriskVpnService : VpnService() {
     }
 
     private fun startVpn(config: VpnServiceStartConfig) {
+        val beganAt = SystemClock.elapsedRealtime()
         // Keep the foreground promotion from resumeVpn() while clearing a previous session.
         stopVpn(removeForeground = false)
         session = runCatching {
@@ -343,6 +356,7 @@ class AsteriskVpnService : VpnService() {
         }.getOrElse { error ->
             throw IllegalStateException(getString(R.string.error_vpn_session_unavailable), error)
         }
+        val sessionAt = SystemClock.elapsedRealtime()
         AndroidMihomoRuntime.prepareTunnel(
             context = this,
             config = config,
@@ -350,8 +364,10 @@ class AsteriskVpnService : VpnService() {
             querySocketUid = this::querySocketUid,
             subscribeCoreLogs = false,
         )
+        val coreAt = SystemClock.elapsedRealtime()
         val tunDescriptor = establishTun(config)
         tunFileDescriptor = tunDescriptor
+        val tunAt = SystemClock.elapsedRealtime()
         val hevConfig = config.hevSocks5TunnelConfig
         if (hevConfig == null) {
             AndroidMihomoRuntime.startNativeTun(
@@ -370,6 +386,11 @@ class AsteriskVpnService : VpnService() {
             runtime.start(hevConfig, tunFd)
             AndroidAppLogger.info(LogTag, "Started Hev TUN with VPN file descriptor")
         }
+        AndroidAppLogger.info(
+            LogTag,
+            "VPN start phases: session ${sessionAt - beganAt}ms, core ${coreAt - sessionAt}ms, " +
+                "tun ${tunAt - coreAt}ms, tunnel ${SystemClock.elapsedRealtime() - tunAt}ms",
+        )
         running = true
     }
 
@@ -563,6 +584,23 @@ class AsteriskVpnService : VpnService() {
         private const val AcceptTimeoutMillis = 10_000L
         private const val ProcessStatsTimeoutMillis = 2_000L
         private const val ResumeWatchdogMillis = 60_000L
+
+        /** Set while this process is bringing the tunnel up, from the moment the start is decided. */
+        private val startInFlight = AtomicBoolean(false)
+
+        internal fun beginStart() {
+            startInFlight.set(true)
+        }
+
+        internal fun endStart() {
+            startInFlight.set(false)
+        }
+
+        /**
+         * Whether this process is bringing the tunnel up. The service owns the core for the whole
+         * hand-over, so nothing else may load one: a second core would compete with the start.
+         */
+        internal fun isStarting(): Boolean = startInFlight.get()
 
         internal suspend fun start(context: Context, config: VpnServiceStartConfig) {
             awaitServiceCall(context, AsteriskVpnServiceIntents.startIntent(context, config), AcceptTimeoutMillis) {

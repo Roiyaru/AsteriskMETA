@@ -295,7 +295,9 @@ internal object AndroidMihomoRuntime {
     }
 
     private suspend fun loadProfile(profileDir: File, content: ByteArray?) {
+        val beganAt = SystemClock.elapsedRealtime()
         if (content == null) Clash.load(profileDir).await() else Clash.load(profileDir, content).await()
+        AndroidAppLogger.info(LogTag, "Mihomo core took the profile in ${SystemClock.elapsedRealtime() - beganAt}ms")
     }
 
     private fun VpnServiceStartConfig.tunGatewayAddresses(): String {
