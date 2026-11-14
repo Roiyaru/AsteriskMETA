@@ -1,90 +1,15 @@
-diff -ruN a/app/src/main/kotlin/engine/vpn/AsteriskVpnService.kt b/app/src/main/kotlin/engine/vpn/AsteriskVpnService.kt
---- a/app/src/main/kotlin/engine/vpn/AsteriskVpnService.kt	2026-11-11 19:47:04.361128100 +0800
-+++ b/app/src/main/kotlin/engine/vpn/AsteriskVpnService.kt	2026-11-11 19:47:58.814803700 +0800
-@@ -42,6 +42,7 @@
- import utils.toTrimmedNonEmptyDistinctList
- import java.io.Closeable
- import java.io.File
-+import java.net.InetAddress
- import java.net.InetSocketAddress
- import java.util.concurrent.CountDownLatch
- import java.util.concurrent.TimeUnit
-@@ -51,6 +52,8 @@
- class AsteriskVpnService : VpnService() {
-     private var tunFileDescriptor: ParcelFileDescriptor? = null
-     private var hevTunRuntime: HevTunRuntime? = null
-+    private var tunSourceAddressV4: InetAddress? = null
-+    private var tunSourceAddressV6: InetAddress? = null
-     private val serviceJob = SupervisorJob()
-     private val serviceScope = CoroutineScope(serviceJob + Dispatchers.IO)
-     private val operationMutex = Mutex()
-@@ -338,6 +341,9 @@
-     private fun startVpn(config: VpnServiceStartConfig) {
-         // Keep the foreground promotion from resumeVpn() while clearing a previous session.
-         stopVpn(removeForeground = false)
-+        tunSourceAddressV4 = runCatching { InetAddress.getByName(config.ipv4Address) }.getOrNull()
-+        tunSourceAddressV6 = config.ipv6Address
-+            ?.let { address -> runCatching { InetAddress.getByName(address) }.getOrNull() }
-         session = runCatching {
-             VpnSession.open(this, config.localProxyOptions)
-         }.getOrElse { error ->
-@@ -545,11 +551,23 @@
-         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-             return InvalidUid
-         }
--        return runCatching {
--            connectivityManager.getConnectionOwnerUid(protocol, source, target)
--        }.getOrElse {
--            InvalidUid
-+        fun query(local: InetSocketAddress): Int? {
-+            return runCatching {
-+                connectivityManager.getConnectionOwnerUid(protocol, local, target)
-+            }.getOrNull()?.takeIf { uid -> uid >= 0 }
-         }
-+
-+        query(source)?.let { return it }
-+
-+        // Hev TUN mode: connections arrive from the tunnel's loopback sockets,
-+        // whose source ports were preserved from the original app flows. Rebuild
-+        // the original tuple with the VPN tunnel address to look the owner up.
-+        if (source.address.isLoopbackAddress) {
-+            tunSourceAddressV4?.let { address -> query(InetSocketAddress(address, source.port)) }?.let { return it }
-+            tunSourceAddressV6?.let { address -> query(InetSocketAddress(address, source.port)) }?.let { return it }
-+        }
-+
-+        return InvalidUid
-     }
- 
-     companion object {
-diff -ruN a/buildSrc/src/main/kotlin/BuildConfig.kt b/buildSrc/src/main/kotlin/BuildConfig.kt
---- a/buildSrc/src/main/kotlin/BuildConfig.kt	2026-11-11 19:47:04.587851600 +0800
-+++ b/buildSrc/src/main/kotlin/BuildConfig.kt	2026-11-11 19:47:36.263108600 +0800
-@@ -11,13 +11,13 @@
+diff --git a/buildSrc/src/main/kotlin/BuildConfig.kt b/buildSrc/src/main/kotlin/BuildConfig.kt
+index bbd7c1a..af3acc1 100644
+--- a/buildSrc/src/main/kotlin/BuildConfig.kt
++++ b/buildSrc/src/main/kotlin/BuildConfig.kt
+@@ -11,8 +11,8 @@ import org.gradle.api.tasks.TaskAction
  object ProjectConfig {
      const val JVM_VERSION = 26
      const val PROJECT_NAME = "AsteriskMETA"
 -    const val VERSION_NAME = "1.2.28-dev"
 -    const val PACKAGE_NAME = "org.asterisk.zcc.ameta"
-+    const val VERSION_NAME = "1.2.28-appgroup"
++    const val VERSION_NAME = "1.2.28-merge"
 +    const val PACKAGE_NAME = "org.asterisk.zcc.ameta.dev"
-     const val ASTERISKD_VERSION = "v2.3.0"
-     const val BPF2SOCKS_VERSION = "v1.2.2"
+     const val ASTERISKD_VERSION = "v2.3.1"
+     const val BPF2SOCKS_VERSION = "v1.2.4"
      const val BPF_MATCHER_VERSION = "v1.0.2"
-     const val ENHANCE_VERSION = "v1.0.8"
--    const val ANDROID_LIB_CLASH_LITE_VERSION = "v1.19.34-android.1"
-+    const val ANDROID_LIB_CLASH_LITE_VERSION = "v1.19.34-android.1-fix2"
-     const val HEV_SOCKS5_TUNNEL_VERSION = "2.19.3"
-     const val TARGET_SDK = 37
-     const val TARGET_SDK_MINOR = 2
-diff -ruN a/settings.gradle.kts b/settings.gradle.kts
---- a/settings.gradle.kts	2026-11-11 19:47:01.172707500 +0800
-+++ b/settings.gradle.kts	2026-11-11 19:47:37.758440100 +0800
-@@ -38,7 +38,7 @@
-             forRepository {
-                 ivy {
-                     name = "AndroidLibClashLiteGitHubRelease"
--                    url = uri("https://github.com/Asterisk4Magisk/AndroidLibClashLite/releases/download")
-+                    url = uri("https://github.com/Roiyaru/AndroidLibClashLite/releases/download")
-                     patternLayout { artifact("[revision]/[artifact].[ext]") }
-                     metadataSources { artifact() }
-                 }

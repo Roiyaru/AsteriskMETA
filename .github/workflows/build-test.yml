@@ -1,4 +1,4 @@
-name: Build Test APK (HevFix)
+name: Build Test APK (Merge)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: hevfix-${{ github.ref }}
+  group: merge-test-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +30,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          url="https://github.com/Roiyaru/AndroidLibClashLite/releases/download/v1.19.34-android.1-fix2/libclash.aar"
+          version="$(sed -n 's/^[[:space:]]*const val ANDROID_LIB_CLASH_LITE_VERSION = "\(.*\)".*/\1/p' buildSrc/src/main/kotlin/BuildConfig.kt | head -n 1)"
+          if [ -z "$version" ]; then
+            echo "::error::Unable to read ANDROID_LIB_CLASH_LITE_VERSION from ProjectConfig."
+            exit 1
+          fi
+          url="https://github.com/Asterisk4Magisk/AndroidLibClashLite/releases/download/${version}/libclash.aar"
+          echo "expecting $url"
           for i in $(seq 1 40); do
             if curl -fsIL --max-time 30 "$url" >/dev/null 2>&1; then
               echo "libclash.aar is available"
@@ -45,14 +51,10 @@ jobs:
       - name: Apply source patches
         run: |
           set -euo pipefail
+          # Only the test-identity patch remains: upstream now carries its own
+          # process-ownership fixes (flow metadata + libclash), so the old HevFix
+          # patches are gone.
           patch -p1 < patches/ameta-source.patch
-          (cd hevtun/src/main/jni && patch -p1 < "$GITHUB_WORKSPACE/patches/hev-src-port.patch")
-          # The build's SyncGitSubmoduleVersionTask requires a clean submodule tree
-          # and force-checks-out the configured tag, so commit the hev patches in the
-          # submodule (and nested core) and move the tag onto the patched commit.
-          HEV=hevtun/src/main/jni/hev-socks5-tunnel
-          (cd "$HEV/src/core" && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm "HevFix: add client bind_port")
-          (cd "$HEV" && git add -A && git -c user.email=ci@local -c user.name=ci commit -qm "HevFix: preserve original flow source port" && git tag -f 2.19.3)
           chmod +x gradlew
 
       - name: Resolve version code
@@ -203,18 +205,18 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: test-${{ github.run_number }}
-          name: App Grouping Test ${{ github.run_number }}
+          name: Merge Test ${{ github.run_number }}
           files: signed-apks/*.apk
           fail_on_unmatched_files: true
           prerelease: true
           body: |
-            AsteriskMETA 连接监控「应用」分组测试包。
+            AsteriskMETA 合并上游测试包（含 Rule Providers 规则阅读器）。
             - Release 包名 `org.asterisk.zcc.ameta.dev`（与官方包并存，可覆盖历史测试包），测试签名与历史 test-* 一致
             - Debug 包名 `org.asterisk.zcc.ameta.dev.debug`（可调试，独立签名，可与 Release 包同时安装）
             - versionCode `${{ steps.version.outputs.version_code }}`
-            - 新增：连接监控筛选栏「应用」——按应用分组显示图标、名称与连接数，点击展开该应用的全部活跃连接
-            - 保留：Hev TUN（免 Root VPN）模式下连接监控的进程/应用识别修复
-            测试方式：安装 arm64-v8a 包 -> 开启代理 -> 连接监控 -> 切换「应用」筛选。
+            - 已合并 upstream/main（含连接监控「应用」分组、上游进程归属修复）
+            - 新增：Rule Providers 全屏阅读器——行号、搜索（大小写/正则/上下跳转/匹配计数/高亮），mrs 规则集解码为可搜索文本
+            测试方式：安装 arm64-v8a 包 -> Providers -> Rule Providers -> 打开 provider 查看与搜索。
 
       - name: Verify release assets
         shell: bash
