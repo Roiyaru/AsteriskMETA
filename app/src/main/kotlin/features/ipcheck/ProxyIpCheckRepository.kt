@@ -94,7 +94,9 @@ internal class ProxyIpCheckRepository(
      */
     fun check(proxies: MihomoProxiesState) {
         val groupName = mutableState.value.effectiveGroup()
-        if (groupName.isBlank()) {
+        // A group is only needed while the tunnel of this app carries the traffic. Without it the
+        // check reports the network of the device, which needs no group at all.
+        if (groupName.isBlank() && stateStore.state.value.proxyRunning) {
             mutableState.update { current ->
                 current.copy(checking = false, error = IpCheckErrorUnknownGroup)
             }

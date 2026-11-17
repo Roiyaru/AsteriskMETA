@@ -64,6 +64,7 @@ internal fun ProxyIpCheckCard(
     state: ProxyIpCheckState,
     onSelectGroup: (String) -> Unit,
     onStartCheck: () -> Unit,
+    localNetworkOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     AsteriskPageCard(modifier = modifier) {
@@ -74,12 +75,16 @@ internal fun ProxyIpCheckCard(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             ProxyIpCheckHeader(checking = state.checking, hasResult = state.hasResult)
-            ProxyIpCheckGroupSelector(
-                groups = state.groups.map { group -> group.name },
-                selectedGroup = state.effectiveGroup(),
-                enabled = state.groups.isNotEmpty() && !state.checking,
-                onSelectGroup = onSelectGroup,
-            )
+            // Without the tunnel of this app the groups describe nothing the check could measure,
+            // so the selector would only offer a choice that changes no answer.
+            if (!localNetworkOnly) {
+                ProxyIpCheckGroupSelector(
+                    groups = state.groups.map { group -> group.name },
+                    selectedGroup = state.effectiveGroup(),
+                    enabled = state.groups.isNotEmpty() && !state.checking,
+                    onSelectGroup = onSelectGroup,
+                )
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             if (state.result.isDirect) {
                 // The group hands the traffic to the network, so one address answers the whole
@@ -97,7 +102,7 @@ internal fun ProxyIpCheckCard(
             }
             ProxyIpCheckAction(
                 checking = state.checking,
-                enabled = state.groups.isNotEmpty(),
+                enabled = localNetworkOnly || state.groups.isNotEmpty(),
                 onStartCheck = onStartCheck,
             )
         }

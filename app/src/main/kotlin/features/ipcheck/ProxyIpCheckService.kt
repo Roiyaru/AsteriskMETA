@@ -110,13 +110,20 @@ internal class ProxyIpCheckService(
         proxies: MihomoProxiesState,
         groupName: String,
     ): IpCheckResult {
+        // A group describes what this app's own tunnel does. Without the tunnel there is no node
+        // to follow and nothing to tell apart, whatever else on the device may be carrying the
+        // traffic, so the answer is the network of the device itself.
+        val hasIpv6 = deviceHasIpv6()
+        if (!appState.proxyRunning) {
+            return IpCheckResult(
+                entry = resolveExit(appState, MihomoIpCheckProbeFallback, hasIpv6),
+                isDirect = true,
+            )
+        }
         val group = selectedNode(proxies, groupName)
             ?: return IpCheckResult(entry = IpCheckEndpoint(error = IpCheckErrorUnknownGroup))
         val nodeId = group.resolvedNodeId(proxies)
         val nodeName = nodeId?.name.orEmpty()
-        // A network without IPv6 is asked nothing about it: every request would only wait for a
-        // timeout to say the same thing.
-        val hasIpv6 = deviceHasIpv6()
         if (nodeName in IpCheckDirectOutbounds) {
             // The group hands the traffic to the network instead of to a node, so there is no
             // entry and no exit to tell apart: both sides are the network of the device.

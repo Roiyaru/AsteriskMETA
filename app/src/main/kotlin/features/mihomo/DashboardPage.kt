@@ -350,6 +350,9 @@ fun MihomoDashboardPage(
                         proxyIpCheckRepository.updateGroups(proxyIpCheckProxies)
                         proxyIpCheckRepository.check(proxyIpCheckProxies)
                     },
+                    // Without the tunnel of this app there is no group to measure, so the card
+                    // reports the network of the device and offers nothing to pick.
+                    localNetworkOnly = !appState.proxyRunning,
                     modifier = HomeContentModifier,
                 )
             }
