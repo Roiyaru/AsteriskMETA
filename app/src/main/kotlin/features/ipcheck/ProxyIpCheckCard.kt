@@ -346,7 +346,7 @@ private fun ProxyIpCheckPlaceValue(endpoint: IpCheckEndpoint) {
             text = label,
             style = style,
             color = color,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
     }
