@@ -360,11 +360,11 @@ private fun ProxyIpCheckPlaceValue(endpoint: IpCheckEndpoint) {
 @SuppressLint("DiscouragedApi")
 @Composable
 private fun rememberFlagResource(countryCode: String): Int {
-    val resources = LocalContext.current.resources
-    return remember(countryCode, resources) {
+    val context = LocalContext.current
+    return remember(countryCode, context) {
         val code = countryCode.trim().lowercase()
         if (code.length == 2 && code.all { character -> character in 'a'..'z' }) {
-            resources.getIdentifier("flag_$code", "drawable", resources.packageName.orEmpty())
+            context.resources.getIdentifier("flag_$code", "drawable", context.packageName)
         } else {
             0
         }
