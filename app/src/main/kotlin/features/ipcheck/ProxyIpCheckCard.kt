@@ -3,6 +3,9 @@
 
 package features.ipcheck
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,16 +28,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.LocalAppServices
 import app.R
+import kotlinx.coroutines.launch
 import ui.components.AsteriskDropdownAnchor
 import ui.components.AsteriskDropdownMenuItem
 import ui.components.AsteriskPageCard
@@ -72,7 +80,6 @@ internal fun ProxyIpCheckCard(
             ProxyIpCheckEndpointRow(
                 entry = state.result.entry,
                 exit = state.result.exit,
-                nodeName = state.result.nodeName,
             )
             ProxyIpCheckAction(
                 checking = state.checking,
@@ -206,7 +213,6 @@ private fun ProxyIpCheckGroupSelector(
 private fun ProxyIpCheckEndpointRow(
     entry: IpCheckEndpoint,
     exit: IpCheckEndpoint,
-    nodeName: String,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -227,6 +233,9 @@ private fun ProxyIpCheckEndpointRow(
 
 /**
  * One address and the network it belongs to.
+ *
+ * Every value is on its own line and copies itself when it is tapped, so a user can take the
+ * address, the province, the autonomous system and the organization one at a time.
  */
 @Composable
 private fun ProxyIpCheckEndpointColumn(
@@ -236,7 +245,7 @@ private fun ProxyIpCheckEndpointColumn(
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         Text(
             text = title,
@@ -244,35 +253,92 @@ private fun ProxyIpCheckEndpointColumn(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
         )
-        Text(
-            text = endpoint.address.ifBlank { stringResource(R.string.home_proxy_ip_check_pending_value) },
-            style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        ProxyIpCheckEndpointDetails(endpoint)
+        if (endpoint.hasAddress) {
+            ProxyIpCheckAddressValue(endpoint.address)
+            ProxyIpCheckDetailValue(endpoint.province)
+            ProxyIpCheckDetailValue(endpoint.asn)
+            ProxyIpCheckDetailValue(endpoint.organization)
+        } else {
+            Text(
+                text = stringResource(R.string.home_proxy_ip_check_pending_value),
+                style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            Text(
+                text = stringResource(R.string.home_proxy_ip_check_unknown_network),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
 /**
- * The province, the autonomous system and the organization of the address.
+ * The address of the endpoint, which copies itself when it is tapped.
  */
 @Composable
-private fun ProxyIpCheckEndpointDetails(endpoint: IpCheckEndpoint) {
-    val details = listOfNotNull(
-        endpoint.province.takeIf { value -> value.isNotBlank() },
-        endpoint.asn.takeIf { value -> value.isNotBlank() },
-        endpoint.organization.takeIf { value -> value.isNotBlank() },
+private fun ProxyIpCheckAddressValue(address: String) {
+    ProxyIpCheckCopyableValue(
+        text = address,
+        style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+        color = MaterialTheme.colorScheme.onSurface,
     )
-    Text(
-        text = details.joinToString(" · ").ifBlank { stringResource(R.string.home_proxy_ip_check_unknown_network) },
+}
+
+/**
+ * One line of the network an address belongs to, which copies itself when it is tapped. An empty
+ * part of the answer takes no room, so a network without an autonomous system does not leave a
+ * blank line behind.
+ */
+@Composable
+private fun ProxyIpCheckDetailValue(value: String) {
+    if (value.isBlank()) return
+    ProxyIpCheckCopyableValue(
+        text = value,
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * A value that copies itself to the clipboard when it is tapped, and says so with a toast.
+ *
+ * The clipboard is the platform one and the toast is the platform toast, so the value lands
+ * where every other app expects it and the confirmation looks like the rest of the system.
+ */
+@Composable
+private fun ProxyIpCheckCopyableValue(
+    text: String,
+    style: TextStyle,
+    color: Color,
+) {
+    val context = LocalContext.current
+    val services = LocalAppServices.current
+    val scope = rememberCoroutineScope()
+    val copiedMessage = stringResource(R.string.home_proxy_ip_check_copied, text)
+    Text(
+        text = text,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(role = Role.Button) {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                clipboard?.setPrimaryClip(ClipData.newPlainText(IpCheckClipLabel, text))
+                scope.launch { services.tipNotifier.show(copiedMessage) }
+            }
+            .padding(vertical = 3.dp),
+        style = style,
+        color = color,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
 }
+
+/** The label the copied value carries, which is what a clipboard history reads. */
+private const val IpCheckClipLabel = "AsteriskMETA proxy IP check"
 
 /**
  * The button that starts the check.
