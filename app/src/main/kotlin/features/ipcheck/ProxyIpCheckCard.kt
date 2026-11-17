@@ -434,11 +434,11 @@ private fun ProxyIpCheckEndpointV6(endpoint: IpCheckEndpoint) {
         style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontFeatureSettings = "tnum"),
         color = MaterialTheme.colorScheme.onSurface,
     )
+    // The IPv6 side is described the same way as the IPv4 side: the two can belong to different
+    // networks even when they reach the same machine.
     ProxyIpCheckPlaceValue(v6)
-    if (v6.asn.isNotBlank() && v6.asn != endpoint.asn) {
-        ProxyIpCheckDetailValue(v6.asn)
-        ProxyIpCheckDetailValue(v6.organization)
-    }
+    ProxyIpCheckDetailValue(v6.asn)
+    ProxyIpCheckDetailValue(v6.organization)
 }
 
 /**
