@@ -3,9 +3,11 @@
 
 package features.ipcheck
 
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -255,7 +259,7 @@ private fun ProxyIpCheckEndpointColumn(
         )
         if (endpoint.hasAddress) {
             ProxyIpCheckAddressValue(endpoint.address)
-            ProxyIpCheckDetailValue(endpoint.province)
+            ProxyIpCheckPlaceValue(endpoint)
             ProxyIpCheckDetailValue(endpoint.asn)
             ProxyIpCheckDetailValue(endpoint.organization)
         } else {
@@ -304,10 +308,90 @@ private fun ProxyIpCheckDetailValue(value: String) {
 }
 
 /**
- * A value that copies itself to the clipboard when it is tapped, and says so with a toast.
+ * The country and the region the address belongs to, on one line behind the flag of the country.
+ *
+ * The flag and the two names read as one statement, so the whole line copies itself at once. The
+ * flag is a bundled vector, so the line looks the same with no network and no image loader.
+ */
+@Composable
+private fun ProxyIpCheckPlaceValue(endpoint: IpCheckEndpoint) {
+    val region = endpoint.province.ifBlank { endpoint.city }
+    val label = listOfNotNull(
+        endpoint.country.takeIf { value -> value.isNotBlank() },
+        region.takeIf { value -> value.isNotBlank() },
+    ).joinToString(" · ")
+    if (label.isBlank()) return
+    val flag = rememberFlagResource(endpoint.countryCode)
+    val copy = rememberCopyAction(label)
+    val style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp)
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(role = Role.Button, onClick = copy)
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (flag != 0) {
+            val side = with(LocalDensity.current) { style.fontSize.toDp() }
+            Image(
+                painter = painterResource(flag),
+                contentDescription = null,
+                modifier = Modifier.size(side),
+            )
+        }
+        Text(
+            text = label,
+            style = style,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * The drawable of the flag of [countryCode], or zero when the code has no bundled flag. The
+ * lookup is by resource name, so the flags stay plain resources with no generated table to keep
+ * in step with them.
+ */
+@SuppressLint("DiscouragedApi")
+@Composable
+private fun rememberFlagResource(countryCode: String): Int {
+    val resources = LocalContext.current.resources
+    return remember(countryCode, resources) {
+        val code = countryCode.trim().lowercase()
+        if (code.length == 2 && code.all { character -> character in 'a'..'z' }) {
+            resources.getIdentifier("flag_$code", "drawable", resources.packageName.orEmpty())
+        } else {
+            0
+        }
+    }
+}
+
+/**
+ * The action that copies [text] to the clipboard, paired with the toast that names it.
  *
  * The clipboard is the platform one and the toast is the platform toast, so the value lands
  * where every other app expects it and the confirmation looks like the rest of the system.
+ */
+@Composable
+private fun rememberCopyAction(text: String): () -> Unit {
+    val context = LocalContext.current
+    val services = LocalAppServices.current
+    val scope = rememberCoroutineScope()
+    val copiedMessage = stringResource(R.string.home_proxy_ip_check_copied, text)
+    return {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText(IpCheckClipLabel, text))
+        scope.launch { services.tipNotifier.show(copiedMessage) }
+    }
+}
+
+/**
+ * A value that copies itself to the clipboard when it is tapped, and says so with a toast.
  */
 @Composable
 private fun ProxyIpCheckCopyableValue(
@@ -315,20 +399,13 @@ private fun ProxyIpCheckCopyableValue(
     style: TextStyle,
     color: Color,
 ) {
-    val context = LocalContext.current
-    val services = LocalAppServices.current
-    val scope = rememberCoroutineScope()
-    val copiedMessage = stringResource(R.string.home_proxy_ip_check_copied, text)
+    val copy = rememberCopyAction(text)
     Text(
         text = text,
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(6.dp))
-            .clickable(role = Role.Button) {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                clipboard?.setPrimaryClip(ClipData.newPlainText(IpCheckClipLabel, text))
-                scope.launch { services.tipNotifier.show(copiedMessage) }
-            }
+            .clickable(role = Role.Button, onClick = copy)
             .padding(vertical = 3.dp),
         style = style,
         color = color,

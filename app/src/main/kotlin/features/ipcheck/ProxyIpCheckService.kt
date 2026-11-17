@@ -34,6 +34,7 @@ internal data class IpCheckEndpoint(
     val organization: String = "",
     val asn: String = "",
     val country: String = "",
+    val countryCode: String = "",
     val city: String = "",
     val error: String = "",
 ) {
@@ -205,6 +206,7 @@ internal fun IpGeolocation.toEndpoint(): IpCheckEndpoint {
         organization = organization,
         asn = asn,
         country = country,
+        countryCode = countryCode,
         city = city,
     )
 }
@@ -219,6 +221,7 @@ internal fun PublicAddressProbeResult.toEndpoint(): IpCheckEndpoint {
         organization = organization,
         asn = asn,
         country = country,
+        countryCode = countryCode,
         city = city,
         error = error,
     )

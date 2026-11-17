@@ -73,7 +73,7 @@
     <string name="home_proxy_ip_check_start">开始检测</string>
     <string name="home_proxy_ip_check_strategy">当前检测策略</string>
     <string name="home_proxy_ip_check_title">代理 IP 检测</string>
-    <string name="home_proxy_ip_check_unknown_network">省份 / ASN / 组织</string>
+    <string name="home_proxy_ip_check_unknown_network">国家与地区 / ASN / 组织</string>
     <string name="home_service_disabled">服务未启用</string>
     <string name="home_service_enabled">服务已启用</string>
     <string name="home_service_start">启动服务</string>

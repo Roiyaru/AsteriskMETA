@@ -21,11 +21,12 @@ internal data class IpGeolocation(
     val organization: String = "",
     val asn: String = "",
     val country: String = "",
+    val countryCode: String = "",
     val city: String = "",
 ) {
     val isEmpty: Boolean
         get() = province.isBlank() && organization.isBlank() && asn.isBlank() &&
-            country.isBlank() && city.isBlank()
+            country.isBlank() && countryCode.isBlank() && city.isBlank()
 }
 
 /**
@@ -55,6 +56,7 @@ internal class IpGeolocationLookup(
             organization = asn.organization.ifBlank { city.organization },
             asn = asn.asn.ifBlank { city.asn },
             country = city.country.ifBlank { asn.country },
+            countryCode = city.countryCode.ifBlank { asn.countryCode },
             city = city.city.ifBlank { asn.city },
         )
     }
@@ -87,6 +89,7 @@ internal class DbIpCityLookup(
             organization = json.stringOrEmpty("organization"),
             asn = json.stringOrEmpty("asn"),
             country = json.stringOrEmpty("countryName"),
+            countryCode = json.stringOrEmpty("countryCode"),
             city = json.stringOrEmpty("city"),
         )
     }
@@ -117,6 +120,7 @@ internal class GeoJsAsnLookup(
             organization = json.stringOrEmpty("organization_name").ifBlank { organization },
             asn = json.asnLabel(),
             country = json.stringOrEmpty("country"),
+            countryCode = json.stringOrEmpty("country_code"),
             city = json.stringOrEmpty("city"),
         )
     }
