@@ -31,7 +31,8 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
 import ui.components.AsteriskScaffold
-import ui.components.floatingChrome
+import ui.components.floatingActionChrome
+import ui.components.floatingActionContentColor
 import ui.components.asteriskNavigationSelection
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.navigation3.runtime.NavKey
@@ -56,6 +58,7 @@ import ui.navigation.AsteriskNavDisplay
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import app.effects.NodeDelayAutoProbe
 import app.modes.NavigationBarStyleCompact
 import app.navigation.MainDestination
 import app.navigation.MainDestinationState
@@ -105,7 +108,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -149,6 +151,12 @@ fun AppContent(
 
     val backStack = remember { mutableStateListOf<NavKey>().apply { add(Route.Main) } }
     val navigator = remember { Navigator(backStack) }
+
+    NodeDelayAutoProbe(
+        stateStore = LocalAppStateStore.current,
+        mihomoRuntime = LocalAppServices.current.mihomoRuntime,
+        homeVisible = navigator.current() is Route.Main && mainDestinationState.current == MainDestination.Home,
+    )
 
     MainScreenBackHandler(mainDestinationState, navigator)
 
@@ -260,9 +268,6 @@ fun AppContent(
             AsteriskNavDisplay(
                 entries = entries,
                 onBack = { navigator.pop() },
-                transitionSpec = AsteriskMotion.navigationForward(),
-                popTransitionSpec = AsteriskMotion.navigationBack(),
-                predictivePopTransitionSpec = AsteriskMotion.predictiveNavigationBack(),
             )
             features.proxy.ProxyErrorHost()
         }
@@ -572,6 +577,7 @@ private fun HomeServicePowerButton(
 ) {
     val appState by LocalAppStateStore.current.collectAppState()
     val control = LocalHomeServiceControl.current
+    val contentColor = floatingActionContentColor(appState.proxyRunning)
     val label = stringResource(
         when (control.operation) {
             HomeServiceOperation.Starting -> R.string.home_service_starting
@@ -586,25 +592,19 @@ private fun HomeServicePowerButton(
         stateDescription = status
     }
     if (compact) {
-        // Compact navigation pairs the tabs with a FAB-sized button: 56dp with
-        // the stock M3 large corner (16dp) rather than this app's 24dp
-        // `shapes.large` card radius, which would read as a circle next to the
-        // pill. It wears the same glass as the pill, so the icon takes
-        // `primary` to stay legible on the translucent surface. A Surface
-        // rather than FloatingActionButton, which has no disabled state: while
-        // busy the button must not ripple or announce itself as actionable.
+        // Compact navigation pairs the tabs with a 56dp accent action and the
+        // stock M3 large corner (16dp). Surface keeps disabled semantics while
+        // a service operation is in progress.
         val shape = RoundedCornerShape(16.dp)
         Box(modifier = semanticsModifier.size(56.dp)) {
-            // Glass on its own layer behind the button so the blur never
-            // samples the icon.
-            Box(Modifier.matchParentSize().floatingChrome(shape))
+            Box(Modifier.matchParentSize().floatingActionChrome(appState.proxyRunning, shape))
             Surface(
                 onClick = control.toggleService,
                 enabled = !control.busy,
                 modifier = Modifier.matchParentSize(),
                 shape = shape,
                 color = Color.Transparent,
-                contentColor = MaterialTheme.colorScheme.primary,
+                contentColor = contentColor,
             ) {
                 Box(
                     modifier = Modifier
@@ -616,7 +616,7 @@ private fun HomeServicePowerButton(
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 3.dp,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = contentColor,
                         )
                     } else {
                         Icon(
@@ -637,7 +637,11 @@ private fun HomeServicePowerButton(
         modifier = semanticsModifier,
     ) {
         if (control.serviceOperationInProgress) {
-            CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
+            CircularProgressIndicator(
+                modifier = Modifier.size(32.dp),
+                strokeWidth = 3.dp,
+                color = contentColor,
+            )
         } else {
             Icon(
                 imageVector = if (appState.proxyRunning) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,

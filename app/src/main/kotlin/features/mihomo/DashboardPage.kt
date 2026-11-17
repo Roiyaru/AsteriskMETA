@@ -93,12 +93,14 @@ import engine.mihomo.mihomoModeName
 import engine.mihomo.raw.MihomoRawConfigParser
 import engine.mihomo.runtime.MihomoDelayStatus
 import engine.mihomo.runtime.MihomoDelayTarget
+import engine.mihomo.runtime.MihomoProxyNodeId
 import engine.mihomo.runtime.MihomoProxiesState
 import engine.mihomo.runtime.MihomoRuntimeRepository
 import engine.mihomo.runtime.MihomoRuntimeState
 import engine.mihomo.runtime.MihomoTrafficSample
 import engine.mihomo.runtime.activeNodeId
-import engine.mihomo.runtime.canStartUserDelayTest
+import engine.mihomo.runtime.canStartProxyDelayTest
+import engine.mihomo.runtime.delayTestingNodeIds
 import engine.mihomo.runtime.MihomoTrafficState
 import engine.mihomo.selectedMihomoProfileOrNull
 import features.home.HomeControllerState
@@ -614,6 +616,7 @@ private data class HomeNodeRuntime(
     val running: Boolean = false,
     val proxies: MihomoProxiesState = MihomoProxiesState(),
     val delayTestingTarget: MihomoDelayTarget? = null,
+    val delayTestingPending: Set<MihomoProxyNodeId> = emptySet(),
 )
 
 private fun MihomoRuntimeRepository.homeNodeRuntimeSnapshot() = state.value.toHomeNodeRuntime()
@@ -622,6 +625,7 @@ private fun MihomoRuntimeState.toHomeNodeRuntime() = HomeNodeRuntime(
     running = running,
     proxies = proxies,
     delayTestingTarget = delayTestingTarget,
+    delayTestingPending = delayTestingNodeIds,
 )
 
 /**
@@ -656,26 +660,20 @@ private fun HomeCurrentNodeRow(
         title = stringResource(R.string.home_current_proxy),
         value = nodeName ?: stringResource(R.string.home_no_proxy),
         onClick = onOpenProxies,
-        // Reserve the delay chip's 48dp touch target plus the row's vertical padding.
-        modifier = Modifier.heightIn(min = 72.dp),
     ) {
         if (testableNode != null) {
             val node = runtime.proxies.node(testableNode)
             val testing = when (val target = runtime.delayTestingTarget) {
                 is MihomoDelayTarget.Node -> target.id == testableNode
-                is MihomoDelayTarget.Group -> runtime.proxies.groups.any { group ->
-                    group.name == target.name && testableNode in group.all
-                }
                 is MihomoDelayTarget.Provider -> target.name == testableNode.providerName
-                null -> false
+                null -> testableNode in runtime.delayTestingPending
             }
             NodeDelayChip(
                 testing = testing,
                 delay = node.delay,
                 delayStatus = node.delayStatus,
                 onClick = {
-                    // A user test preempts a background probe; it never stacks on another user test.
-                    if (mihomoRuntime.state.value.canStartUserDelayTest) {
+                    if (mihomoRuntime.state.value.canStartProxyDelayTest(testableNode)) {
                         services.appScope.launch {
                             mihomoRuntime.testProxyDelay(latestAppState.value, testableNode)
                         }
@@ -700,9 +698,11 @@ private fun HomeChinRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // Both rows reserve the delay chip's 48dp touch target plus symmetric padding.
+            .heightIn(min = 60.dp)
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 12.dp),
+            .padding(horizontal = 4.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(

@@ -44,7 +44,7 @@ import features.settings.servicecontrol.ServiceControlSettings
 import features.settings.AutoSwitchSettings
 import features.settings.DefaultConnectionTestConcurrent
 import features.settings.DefaultConnectionTestTimeoutMillis
-import features.settings.DefaultConnectionTestUnifiedDelay
+import features.settings.DefaultConnectionTestOverrideUnifiedDelay
 import features.settings.DefaultConnectionTestUrl
 
 data class AppState(
@@ -53,7 +53,7 @@ data class AppState(
     val seedIndex: Int = 0,
     val networkActivityStyle: Int = NetworkActivityStyleDotted,
     val hideRecentTasks: Boolean = false,
-    val allowScreenshots: Boolean = false,
+    val allowScreenshots: Boolean = true,
     val hideLauncherIcon: Boolean = false,
     val autoHideNavigationBar: Boolean = false,
     val navigationBarStyle: Int = NavigationBarStyleClassic,
@@ -112,7 +112,8 @@ data class AppState(
     val connectionTestUrl: String = DefaultConnectionTestUrl,
     val connectionTestConcurrent: Int = DefaultConnectionTestConcurrent,
     val connectionTestTimeoutMillis: Int = DefaultConnectionTestTimeoutMillis,
-    val connectionTestUnifiedDelay: Boolean = DefaultConnectionTestUnifiedDelay,
+    /** True forces `unified-delay: true`; false preserves the profile or override script value. */
+    val overrideUnifiedDelay: Boolean = DefaultConnectionTestOverrideUnifiedDelay,
     val coreLogLevel: Int = 3,
     val enableGeodataMode: Boolean = false,
     val enableTrafficStatsNotification: Boolean = false,

@@ -19,8 +19,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FiniteAnimationSpec
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -28,19 +28,22 @@ import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
 
 internal val LocalReduceMotion = staticCompositionLocalOf { false }
 
 private const val NavigationTransitionDurationMillis = 500
-private const val PredictiveNavigationTransitionDurationMillis = 550
+private const val NavigationSpringStiffness = 146f
+private const val SheetMotionSpeed = 0.8f
 
 // Mirrors the default transition curve used by AsteriskNG's Miuix NavDisplay.
 private val NavigationTransitionEasing = DampedNavigationEasing(
@@ -85,27 +88,6 @@ private class DampedNavigationEasing(
  * different Material motion families, while the system animator preference can disable both.
  */
 internal object AsteriskMotion {
-    internal data class HorizontalSlideOffsets(
-        val incoming: Int,
-        val outgoing: Int,
-    )
-
-    internal fun navigationForwardSlideOffsets(width: Int) = HorizontalSlideOffsets(
-        incoming = width,
-        outgoing = -width / 4,
-    )
-
-    internal fun navigationBackSlideOffsets(width: Int) = HorizontalSlideOffsets(
-        incoming = -width / 4,
-        outgoing = width,
-    )
-
-    @Suppress("UNUSED_PARAMETER")
-    internal fun predictiveBackSlideOffsets(
-        width: Int,
-        swipeEdge: Int,
-    ): HorizontalSlideOffsets = navigationBackSlideOffsets(width)
-
     fun <T> navigation(
         reducedMotion: Boolean,
         durationMillis: Int = NavigationTransitionDurationMillis,
@@ -118,40 +100,50 @@ internal object AsteriskMotion {
         )
     }
 
-    @Composable
-    private fun <T> navigation(): FiniteAnimationSpec<T> =
-        navigation(reducedMotion = LocalReduceMotion.current)
-
-    // Convert finger progress into the unfinished entry's time fraction. Inverting the same
-    // easing keeps progress=0 at the current visual position instead of restarting the slide.
-    internal fun interruptedNavigationFraction(entryFraction: Float, backProgress: Float): Float {
-        val start = entryFraction.coerceIn(0f, 1f)
-        val progress = backProgress.coerceIn(0f, 1f)
-        if (progress == 0f) return start
-        if (progress == 1f) return 0f
-        val target = NavigationTransitionEasing.transform(start) * (1f - progress)
-        var lower = 0f
-        var upper = start
-        repeat(20) {
-            val middle = (lower + upper) / 2f
-            if (NavigationTransitionEasing.transform(middle) < target) lower = middle else upper = middle
-        }
-        return (lower + upper) / 2f
+    fun navigationSettle(reducedMotion: Boolean): FiniteAnimationSpec<Float> = if (reducedMotion) {
+        snap()
+    } else {
+        spring(dampingRatio = 1f, stiffness = NavigationSpringStiffness, visibilityThreshold = 0.0025f)
     }
 
-    fun <T> predictiveNavigation(reducedMotion: Boolean): FiniteAnimationSpec<T> =
-        if (reducedMotion) {
-            snap()
-        } else {
-            tween(
-                durationMillis = PredictiveNavigationTransitionDurationMillis,
-                easing = LinearEasing,
-            )
-        }
+    internal fun navigationGestureProgress(anchor: Float, progress: Float): Float =
+        (anchor + progress).coerceIn(anchor.coerceAtMost(0f), 0.999f)
+
+    internal fun navigationCommitVelocity(remainingDistance: Float, velocity: Float): Float =
+        max(velocity, -sqrt(NavigationSpringStiffness) * remainingDistance.coerceAtLeast(0f))
 
     @Composable
-    private fun <T> predictiveNavigation(): FiniteAnimationSpec<T> =
-        predictiveNavigation(reducedMotion = LocalReduceMotion.current)
+    fun sheetMotionScheme(): MotionScheme {
+        val base = MaterialTheme.motionScheme
+        val reducedMotion = LocalReduceMotion.current
+        return remember(base, reducedMotion) {
+            object : MotionScheme by base {
+                override fun <T> defaultSpatialSpec(): FiniteAnimationSpec<T> =
+                    sheet(base.defaultSpatialSpec(), reducedMotion)
+
+                override fun <T> defaultEffectsSpec(): FiniteAnimationSpec<T> =
+                    sheet(base.defaultEffectsSpec(), reducedMotion)
+
+                // Material uses fast effects for the sheet's hide translation as well.
+                override fun <T> fastEffectsSpec(): FiniteAnimationSpec<T> =
+                    sheet(base.fastEffectsSpec(), reducedMotion)
+            }
+        }
+    }
+
+    private fun <T> sheet(
+        base: FiniteAnimationSpec<T>,
+        reducedMotion: Boolean,
+    ): FiniteAnimationSpec<T> = when {
+        reducedMotion -> snap()
+        base is SpringSpec<T> -> spring(
+            dampingRatio = base.dampingRatio,
+            // Spring speed scales with the square root of stiffness.
+            stiffness = base.stiffness * SheetMotionSpeed * SheetMotionSpeed,
+            visibilityThreshold = base.visibilityThreshold,
+        )
+        else -> base
+    }
 
     fun <T> effects(reducedMotion: Boolean): FiniteAnimationSpec<T> = if (reducedMotion) {
         snap()
@@ -237,70 +229,6 @@ internal object AsteriskMotion {
     fun contentExit(): ExitTransition =
         shrinkVertically(animationSpec = contentSize()) +
             fadeOut(animationSpec = contentFade())
-
-    @Composable
-    fun <S> navigationForward(): AnimatedContentTransitionScope<S>.() -> ContentTransform {
-        val spatialSpec = navigation<IntOffset>()
-        return {
-            ContentTransform(
-                targetContentEnter = slideInHorizontally(
-                    animationSpec = spatialSpec,
-                    initialOffsetX = { width ->
-                        navigationForwardSlideOffsets(width).incoming
-                    },
-                ),
-                initialContentExit = slideOutHorizontally(
-                    animationSpec = spatialSpec,
-                    targetOffsetX = { width ->
-                        navigationForwardSlideOffsets(width).outgoing
-                    },
-                ),
-            )
-        }
-    }
-
-    @Composable
-    fun <S> navigationBack(): AnimatedContentTransitionScope<S>.() -> ContentTransform {
-        val spatialSpec = navigation<IntOffset>()
-        return {
-            ContentTransform(
-                targetContentEnter = slideInHorizontally(
-                    animationSpec = spatialSpec,
-                    initialOffsetX = { width ->
-                        navigationBackSlideOffsets(width).incoming
-                    },
-                ),
-                initialContentExit = slideOutHorizontally(
-                    animationSpec = spatialSpec,
-                    targetOffsetX = { width ->
-                        navigationBackSlideOffsets(width).outgoing
-                    },
-                ),
-            )
-        }
-    }
-
-    @Composable
-    fun <S> predictiveNavigationBack():
-        AnimatedContentTransitionScope<S>.(Int) -> ContentTransform {
-        val spatialSpec = predictiveNavigation<IntOffset>()
-        return { swipeEdge ->
-            ContentTransform(
-                targetContentEnter = slideInHorizontally(
-                    animationSpec = spatialSpec,
-                    initialOffsetX = { width ->
-                        predictiveBackSlideOffsets(width, swipeEdge).incoming
-                    },
-                ),
-                initialContentExit = slideOutHorizontally(
-                    animationSpec = spatialSpec,
-                    targetOffsetX = { width ->
-                        predictiveBackSlideOffsets(width, swipeEdge).outgoing
-                    },
-                ),
-            )
-        }
-    }
 
     @Composable
     fun <S> destinationChange(
