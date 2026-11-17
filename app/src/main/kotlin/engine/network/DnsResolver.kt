@@ -131,9 +131,10 @@ internal class DnsResolver(
         val addresses = mutableListOf<DnsResolvedAddress>()
         var answeredBy = ""
         for (server in servers) {
-            val resolved = runCatching { query(server, trimmedHost, types) }.getOrDefault(emptyList())
+            val spec = DnsServerSpec(server)
+            val resolved = runCatching { query(spec, trimmedHost, types) }.getOrDefault(emptyList())
             if (resolved.isEmpty()) continue
-            answeredBy = server.raw
+            answeredBy = spec.raw
             resolved.forEach { address ->
                 if (addresses.none { existing -> existing.address == address.address }) {
                     addresses += address
@@ -247,4 +248,14 @@ internal class DnsResolver(
         }
     }
 }
+
+private const val DnsPlainScheme = "plain"
+private const val DnsDohScheme = "https"
+private const val DnsDohPlainScheme = "http"
+private const val DnsDefaultPort = 53
+private const val DnsPlainQueryTimeoutMillis = 5_000
+private const val DnsDohQueryTimeoutMillis = 8_000
+private const val DnsMaxResponseBytes = 4_096
+private const val DnsSystemServerLabel = "system"
+private const val DnsDohContentType = "application/dns-message"
 
