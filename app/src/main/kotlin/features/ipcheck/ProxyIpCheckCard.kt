@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.LocalAppServices
 import app.R
+import ui.icons.AsteriskIcons
 import kotlinx.coroutines.launch
 import ui.components.AsteriskDropdownAnchor
 import ui.components.AsteriskDropdownMenuItem
@@ -65,6 +68,8 @@ internal fun ProxyIpCheckCard(
     onSelectGroup: (String) -> Unit,
     onStartCheck: () -> Unit,
     localNetworkOnly: Boolean = false,
+    masked: Boolean = true,
+    onToggleMask: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     AsteriskPageCard(modifier = modifier) {
@@ -74,7 +79,12 @@ internal fun ProxyIpCheckCard(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            ProxyIpCheckHeader(checking = state.checking, hasResult = state.hasResult)
+            ProxyIpCheckHeader(
+                checking = state.checking,
+                hasResult = state.hasResult,
+                masked = masked,
+                onToggleMask = onToggleMask,
+            )
             // Without the tunnel of this app the groups describe nothing the check could measure,
             // so the selector would only offer a choice that changes no answer.
             if (!localNetworkOnly) {
@@ -92,12 +102,14 @@ internal fun ProxyIpCheckCard(
                 ProxyIpCheckEndpointColumn(
                     title = stringResource(R.string.home_proxy_ip_check_direct),
                     endpoint = state.result.entry,
+                    masked = masked,
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
                 ProxyIpCheckEndpointRow(
                     entry = state.result.entry,
                     exit = state.result.exit,
+                    masked = masked,
                 )
             }
             ProxyIpCheckAction(
@@ -116,6 +128,8 @@ internal fun ProxyIpCheckCard(
 private fun ProxyIpCheckHeader(
     checking: Boolean,
     hasResult: Boolean,
+    masked: Boolean,
+    onToggleMask: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -130,8 +144,40 @@ private fun ProxyIpCheckHeader(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(4.dp))
+        ProxyIpCheckVisibilityToggle(masked = masked, onToggleMask = onToggleMask)
+        Spacer(Modifier.width(4.dp))
         ProxyIpCheckStatusBadge(checking = checking, hasResult = hasResult)
+    }
+}
+
+/**
+ * The eye that decides how much of the answer is on screen.
+ *
+ * The choice is a preference of the app rather than a property of a check, so it outlives the
+ * result: a user who hides the addresses keeps them hidden after the next check.
+ */
+@Composable
+private fun ProxyIpCheckVisibilityToggle(
+    masked: Boolean,
+    onToggleMask: () -> Unit,
+) {
+    IconButton(
+        onClick = onToggleMask,
+        modifier = Modifier.size(32.dp),
+    ) {
+        Icon(
+            imageVector = if (masked) AsteriskIcons.VisibilityOff else AsteriskIcons.Visibility,
+            contentDescription = stringResource(
+                if (masked) {
+                    R.string.home_proxy_ip_check_show_details
+                } else {
+                    R.string.home_proxy_ip_check_hide_details
+                },
+            ),
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -238,6 +284,7 @@ private fun ProxyIpCheckGroupSelector(
 private fun ProxyIpCheckEndpointRow(
     entry: IpCheckEndpoint,
     exit: IpCheckEndpoint,
+    masked: Boolean,
 ) {
     val showV6 = entry.rendersV6() || exit.rendersV6()
     Column(
@@ -249,14 +296,16 @@ private fun ProxyIpCheckEndpointRow(
             right = { ProxyIpCheckColumnTitle(stringResource(R.string.home_proxy_ip_check_exit)) },
         )
         ProxyIpCheckFields(
-            left = { slot -> ProxyIpCheckAddressSlot(entry, slot) },
-            right = { slot -> ProxyIpCheckAddressSlot(exit, slot) },
+            masked = masked,
+            left = { slot -> ProxyIpCheckAddressSlot(entry, slot, masked) },
+            right = { slot -> ProxyIpCheckAddressSlot(exit, slot, masked) },
         )
         if (showV6) {
             ProxyIpCheckSectionDivider()
             ProxyIpCheckFields(
-                left = { slot -> ProxyIpCheckV6Slot(entry, slot) },
-                right = { slot -> ProxyIpCheckV6Slot(exit, slot) },
+                masked = masked,
+                left = { slot -> ProxyIpCheckV6Slot(entry, slot, masked) },
+                right = { slot -> ProxyIpCheckV6Slot(exit, slot, masked) },
             )
         }
     }
@@ -272,6 +321,7 @@ private fun ProxyIpCheckEndpointRow(
 private fun ProxyIpCheckEndpointColumn(
     title: String,
     endpoint: IpCheckEndpoint,
+    masked: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -279,10 +329,10 @@ private fun ProxyIpCheckEndpointColumn(
         verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         ProxyIpCheckColumnTitle(title)
-        ProxyIpCheckSlots { slot -> ProxyIpCheckAddressSlot(endpoint, slot) }
+        ProxyIpCheckSlots(masked = masked) { slot -> ProxyIpCheckAddressSlot(endpoint, slot, masked) }
         if (endpoint.rendersV6()) {
             ProxyIpCheckSectionDivider()
-            ProxyIpCheckSlots { slot -> ProxyIpCheckV6Slot(endpoint, slot) }
+            ProxyIpCheckSlots(masked = masked) { slot -> ProxyIpCheckV6Slot(endpoint, slot, masked) }
         }
     }
 }
@@ -318,10 +368,11 @@ private fun ProxyIpCheckCells(
 /** The four fields of one side, one row of the table each. */
 @Composable
 private fun ProxyIpCheckFields(
+    masked: Boolean,
     left: @Composable (Int) -> Unit,
     right: @Composable (Int) -> Unit,
 ) {
-    ProxyIpCheckEndpointSlots.forEach { slot ->
+    (if (masked) ProxyIpCheckPublicSlots else ProxyIpCheckFullSlots).forEach { slot ->
         ProxyIpCheckCells(
             left = { left(slot) },
             right = { right(slot) },
@@ -331,8 +382,8 @@ private fun ProxyIpCheckFields(
 
 /** The slots of one side, stacked, for the case where there is only one side. */
 @Composable
-private fun ProxyIpCheckSlots(content: @Composable (Int) -> Unit) {
-    ProxyIpCheckEndpointSlots.forEach { slot -> content(slot) }
+private fun ProxyIpCheckSlots(masked: Boolean, content: @Composable (Int) -> Unit) {
+    (if (masked) ProxyIpCheckPublicSlots else ProxyIpCheckFullSlots).forEach { slot -> content(slot) }
 }
 
 /** The rule between the families. It crosses the whole table, so the two sides share one line. */
@@ -349,7 +400,7 @@ private fun ProxyIpCheckSectionDivider() {
  * slots and leaves the rest empty, which keeps the table rows where they are.
  */
 @Composable
-private fun ProxyIpCheckAddressSlot(endpoint: IpCheckEndpoint, slot: Int) {
+private fun ProxyIpCheckAddressSlot(endpoint: IpCheckEndpoint, slot: Int, masked: Boolean) {
     if (!endpoint.hasAddress) {
         when (slot) {
             0 -> Text(
@@ -369,7 +420,7 @@ private fun ProxyIpCheckAddressSlot(endpoint: IpCheckEndpoint, slot: Int) {
         return
     }
     when (slot) {
-        0 -> ProxyIpCheckAddressValue(endpoint.address)
+        0 -> ProxyIpCheckAddressValue(endpoint.displayAddress(masked))
         1 -> ProxyIpCheckPlaceValue(endpoint)
         2 -> ProxyIpCheckDetailValue(endpoint.asn)
         3 -> ProxyIpCheckDetailValue(endpoint.organization)
@@ -384,7 +435,7 @@ private fun ProxyIpCheckAddressSlot(endpoint: IpCheckEndpoint, slot: Int) {
  * value that is copied is the address itself.
  */
 @Composable
-private fun ProxyIpCheckV6Slot(endpoint: IpCheckEndpoint, slot: Int) {
+private fun ProxyIpCheckV6Slot(endpoint: IpCheckEndpoint, slot: Int, masked: Boolean) {
     if (endpoint.v6Unsupported) {
         if (slot == 0) {
             Text(
@@ -400,8 +451,8 @@ private fun ProxyIpCheckV6Slot(endpoint: IpCheckEndpoint, slot: Int) {
     if (!v6.hasAddress) return
     when (slot) {
         0 -> ProxyIpCheckCopyableValue(
-            text = v6.address.withIpv6Breaks(),
-            copyText = v6.address,
+            text = v6.displayAddress(masked).withIpv6Breaks(),
+            copyText = v6.displayAddress(masked),
             style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontFeatureSettings = "tnum"),
             color = MaterialTheme.colorScheme.onSurface,
         )
@@ -418,8 +469,30 @@ private fun IpCheckEndpoint.rendersV6(): Boolean {
     return hasAddress && (v6Unsupported || v6?.hasAddress == true)
 }
 
-/** The fields a side is described by, in the order they are read. */
-private val ProxyIpCheckEndpointSlots = 0..3
+/**
+ * The address as it is shown: whole, or only the part that tells one network from another.
+ *
+ * The two leading segments are enough to recognise an address and not enough to reach it, which
+ * is what a reader who hides the card wants. The autonomous system and the operator are not part
+ * of the answer in that state, so their fields are not laid out at all.
+ */
+private fun IpCheckEndpoint.displayAddress(masked: Boolean): String {
+    return if (masked) address.maskedAddress() else address
+}
+
+/** The first two segments of an address, the rest replaced by a marker. */
+private fun String.maskedAddress(): String {
+    val separator = if (contains(':')) ':' else '.'
+    val segments = split(separator)
+    if (segments.size <= 2) return this
+    return segments.take(2).joinToString(separator.toString()) + "$separator***"
+}
+
+/** The fields a side is described by when everything is shown. */
+private val ProxyIpCheckFullSlots = 0..3
+
+/** The fields a side is described by when the identifying parts are hidden. */
+private val ProxyIpCheckPublicSlots = 0..1
 
 /**
  * The address of the endpoint, which copies itself when it is tapped.

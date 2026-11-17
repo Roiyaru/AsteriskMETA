@@ -355,6 +355,12 @@ fun MihomoDashboardPage(
                     // Without the tunnel of this app there is no group to measure, so the card
                     // reports the network of the device and offers nothing to pick.
                     localNetworkOnly = !appState.proxyRunning,
+                    masked = appState.hideIpCheckSensitive,
+                    onToggleMask = {
+                        updateAppState { state ->
+                            state.copy(hideIpCheckSensitive = !state.hideIpCheckSensitive)
+                        }
+                    },
                     modifier = HomeContentModifier,
                 )
             }
