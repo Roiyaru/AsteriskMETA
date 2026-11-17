@@ -272,6 +272,7 @@ private fun ProxyIpCheckEndpointColumn(
             ProxyIpCheckPlaceValue(endpoint)
             ProxyIpCheckDetailValue(endpoint.asn)
             ProxyIpCheckDetailValue(endpoint.organization)
+            ProxyIpCheckEndpointV6(endpoint)
         } else {
             Text(
                 text = stringResource(R.string.home_proxy_ip_check_pending_value),
@@ -403,15 +404,67 @@ private fun rememberCopyAction(text: String): () -> Unit {
 }
 
 /**
+ * The IPv6 side of the endpoint, under the IPv4 side and told apart from it by a rule.
+ *
+ * An address of this family is long enough that one line rarely holds it, so the parts are broken
+ * after the colons and the tail continues on a second line. The breaks are only for the eye: the
+ * value that is copied is the address itself.
+ */
+@Composable
+private fun ProxyIpCheckEndpointV6(endpoint: IpCheckEndpoint) {
+    val v6 = endpoint.v6
+    val hasV6 = v6 != null && v6.hasAddress
+    if (!endpoint.v6Unsupported && !hasV6) return
+    HorizontalDivider(
+        modifier = Modifier.padding(top = 5.dp, bottom = 3.dp),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+    if (endpoint.v6Unsupported || v6 == null) {
+        Text(
+            text = stringResource(R.string.home_proxy_ip_check_ipv6_unsupported),
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+        return
+    }
+    ProxyIpCheckCopyableValue(
+        text = v6.address.withIpv6Breaks(),
+        copyText = v6.address,
+        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontFeatureSettings = "tnum"),
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    ProxyIpCheckPlaceValue(v6)
+    if (v6.asn.isNotBlank() && v6.asn != endpoint.asn) {
+        ProxyIpCheckDetailValue(v6.asn)
+        ProxyIpCheckDetailValue(v6.organization)
+    }
+}
+
+/**
+ * The address with a soft break after every colon, so a long address wraps between its parts
+ * instead of running off the column. A zero-width space leaves the rendering unchanged, and the
+ * layout decides where the line actually ends.
+ */
+private fun String.withIpv6Breaks(): String {
+    if (!contains(':')) return this
+    return replace(":", ":\u200B")
+}
+
+/**
  * A value that copies itself to the clipboard when it is tapped, and says so with a toast.
+ *
+ * [copyText] is what lands in the clipboard. It defaults to the text on screen, and differs only
+ * where the text carries breaks that are not part of the value.
  */
 @Composable
 private fun ProxyIpCheckCopyableValue(
     text: String,
     style: TextStyle,
     color: Color,
+    copyText: String = text,
 ) {
-    val copy = rememberCopyAction(text)
+    val copy = rememberCopyAction(copyText)
     Text(
         text = text,
         modifier = Modifier

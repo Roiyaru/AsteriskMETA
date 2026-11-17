@@ -12,13 +12,16 @@ import engine.mihomo.runtime.MihomoNodeAddressDirectory
 import engine.mihomo.runtime.MihomoProxiesState
 import engine.mihomo.runtime.MihomoProxyGroup
 import engine.mihomo.runtime.MihomoRuntimeRepository
+import engine.network.DnsRecordType
 import engine.network.DnsResolutionPolicy
 import engine.network.DnsResolver
 import engine.network.IpGeolocation
 import engine.network.IpGeolocationLookup
+import engine.network.Ipv6PublicAddressProbeEndpoint
 import engine.network.LocalProxyTarget
 import engine.network.PublicAddressProbe
 import engine.network.PublicAddressProbeResult
+import engine.network.deviceHasIpv6
 import engine.proxy.LocalProxyRuntime
 import engine.proxy.toLocalProxyOptions
 import engine.proxy.toLocalProxyOptionsOrNull
@@ -39,6 +42,10 @@ internal data class IpCheckEndpoint(
     val countryCode: String = "",
     val city: String = "",
     val error: String = "",
+    /** The IPv6 side of the same endpoint, when the endpoint has one. */
+    val v6: IpCheckEndpoint? = null,
+    /** The network of the device carries no IPv6 at all, so there is nothing to ask for. */
+    val v6Unsupported: Boolean = false,
 ) {
     val hasAddress: Boolean
         get() = address.isNotBlank()
@@ -73,6 +80,9 @@ internal class ProxyIpCheckService(
     private val dnsResolver: DnsResolver = DnsResolver(),
     private val geolocationLookup: IpGeolocationLookup = IpGeolocationLookup(),
     private val addressProbe: PublicAddressProbe = PublicAddressProbe(),
+    private val ipv6AddressProbe: PublicAddressProbe = PublicAddressProbe(
+        endpoints = listOf(Ipv6PublicAddressProbeEndpoint),
+    ),
 ) {
     /**
      * The groups a check can run against, in the order the runtime reports them. The selector the
@@ -104,19 +114,22 @@ internal class ProxyIpCheckService(
             ?: return IpCheckResult(entry = IpCheckEndpoint(error = IpCheckErrorUnknownGroup))
         val nodeId = group.resolvedNodeId(proxies)
         val nodeName = nodeId?.name.orEmpty()
+        // A network without IPv6 is asked nothing about it: every request would only wait for a
+        // timeout to say the same thing.
+        val hasIpv6 = deviceHasIpv6()
         if (nodeName in IpCheckDirectOutbounds) {
             // The group hands the traffic to the network instead of to a node, so there is no
             // entry and no exit to tell apart: both sides are the network of the device.
             return IpCheckResult(
-                entry = resolveExit(appState, MihomoIpCheckProbeFallback),
+                entry = resolveExit(appState, MihomoIpCheckProbeFallback, hasIpv6),
                 nodeName = nodeName,
                 isDirect = true,
             )
         }
         val catalog = addressDirectory.read(appState)
         val nodeAddress = catalog.addresses[nodeName]
-        val entry = resolveEntry(nodeAddress, catalog.dnsPolicy)
-        val exit = resolveExit(appState, groupName)
+        val entry = resolveEntry(nodeAddress, catalog.dnsPolicy, hasIpv6)
+        val exit = resolveExit(appState, groupName, hasIpv6)
         return IpCheckResult(
             entry = entry.first,
             exit = exit,
@@ -137,24 +150,44 @@ internal class ProxyIpCheckService(
     private suspend fun resolveEntry(
         nodeAddress: MihomoNodeAddress?,
         policy: DnsResolutionPolicy,
+        hasIpv6: Boolean,
     ): Triple<IpCheckEndpoint, String, List<String>> {
         if (nodeAddress == null || nodeAddress.host.isBlank()) {
-            return Triple(IpCheckEndpoint(error = IpCheckErrorUnknownNode), "", emptyList())
+            return Triple(
+                IpCheckEndpoint(error = IpCheckErrorUnknownNode, v6Unsupported = !hasIpv6),
+                "",
+                emptyList(),
+            )
         }
         val host = nodeAddress.host
         if (host.isIpAddress()) {
-            // An address needs no resolution; it is looked up directly.
+            // An address needs no resolution; it is looked up directly. A node that carries an
+            // address rather than a name has no other address to report.
             val geolocation = geolocationLookup.lookup(host)
-            return Triple(geolocation.toEndpoint(), "", listOf(host))
+            return Triple(geolocation.toEndpoint().copy(v6Unsupported = !hasIpv6), "", listOf(host))
         }
         val resolution = dnsResolver.resolve(host, policy)
-        val addresses = resolution.addresses.map { resolved -> resolved.address }
-        if (addresses.isEmpty()) {
-            return Triple(IpCheckEndpoint(error = IpCheckErrorResolutionFailed), resolution.server, emptyList())
+        val v4 = resolution.addresses.filter { resolved -> resolved.type == DnsRecordType.A }
+        val v6 = resolution.addresses.filter { resolved -> resolved.type == DnsRecordType.AAAA }
+        if (v4.isEmpty() && v6.isEmpty()) {
+            return Triple(
+                IpCheckEndpoint(error = IpCheckErrorResolutionFailed, v6Unsupported = !hasIpv6),
+                resolution.server,
+                emptyList(),
+            )
         }
+        val addresses = resolution.addresses.map { resolved -> resolved.address }
         val endpoint = withContext(Dispatchers.IO) {
-            val geolocations = addresses.map { address -> geolocationLookup.lookup(address) }
-            geolocations.first().toEndpoint()
+            val primaryV4 = v4.firstOrNull()
+            val primary = primaryV4 ?: v6.first()
+            val primaryEndpoint = geolocationLookup.lookup(primary.address).toEndpoint()
+            // A node that answers with an IPv6 address only has already reported it above.
+            val v6Endpoint = if (primaryV4 != null && hasIpv6) {
+                v6.firstOrNull()?.let { resolved -> geolocationLookup.lookup(resolved.address).toEndpoint() }
+            } else {
+                null
+            }
+            primaryEndpoint.copy(v6 = v6Endpoint, v6Unsupported = !hasIpv6)
         }
         return Triple(endpoint, resolution.server, addresses)
     }
@@ -166,11 +199,22 @@ internal class ProxyIpCheckService(
      * outbound the rules picked for the probe rather than the group the card names. The probe
      * is therefore pointed at the checked group first, and the route is released afterwards.
      */
-    private suspend fun resolveExit(appState: AppState, route: String): IpCheckEndpoint {
+    private suspend fun resolveExit(
+        appState: AppState,
+        route: String,
+        hasIpv6: Boolean,
+    ): IpCheckEndpoint {
         val target = localProxyTarget(appState)
         val pinned = target != null && pinProbeRoute(appState, route)
         return try {
-            describe(addressProbe.probe(target?.toProxy()))
+            val v4 = describe(addressProbe.probe(target?.toProxy()))
+            // The two families leave through the same route, so the route stays pinned for both.
+            val v6 = if (hasIpv6) {
+                describe(ipv6AddressProbe.probe(target?.toProxy())).takeIf { endpoint -> endpoint.hasAddress }
+            } else {
+                null
+            }
+            v4.copy(v6 = v6, v6Unsupported = !hasIpv6)
         } finally {
             if (pinned) releaseProbeRoute(appState)
         }

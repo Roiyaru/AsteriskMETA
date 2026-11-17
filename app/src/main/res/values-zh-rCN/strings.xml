@@ -68,6 +68,7 @@
     <string name="home_proxy_ip_check_done">已检测</string>
     <string name="home_proxy_ip_check_entry">入口 IP</string>
     <string name="home_proxy_ip_check_exit">出口 IP</string>
+    <string name="home_proxy_ip_check_ipv6_unsupported">不支持IPv6</string>
     <string name="home_proxy_ip_check_no_group">暂无代理组</string>
     <string name="home_proxy_ip_check_pending">待检测</string>
     <string name="home_proxy_ip_check_pending_value">等待检测</string>

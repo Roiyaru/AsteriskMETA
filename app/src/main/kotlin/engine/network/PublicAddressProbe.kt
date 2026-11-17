@@ -167,5 +167,11 @@ private const val ProbeUserAgent = "AsteriskMETA"
  */
 internal val DefaultPublicAddressProbeEndpoints = listOf(
     "https://ipv4.geojs.io/v1/ip/geo.json",
-    "https://ipv6.geojs.io/v1/ip/geo.json",
+    Ipv6PublicAddressProbeEndpoint,
 )
+
+/**
+ * The endpoint that answers over IPv6 only. Asking it on its own is how the check finds out
+ * whether the traffic has an IPv6 address at all.
+ */
+internal const val Ipv6PublicAddressProbeEndpoint = "https://ipv6.geojs.io/v1/ip/geo.json"

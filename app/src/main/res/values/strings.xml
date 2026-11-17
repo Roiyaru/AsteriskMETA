@@ -68,6 +68,7 @@
     <string name="home_proxy_ip_check_done">Checked</string>
     <string name="home_proxy_ip_check_entry">Entry IP</string>
     <string name="home_proxy_ip_check_exit">Exit IP</string>
+    <string name="home_proxy_ip_check_ipv6_unsupported">IPv6 not available</string>
     <string name="home_proxy_ip_check_no_group">No proxy group</string>
     <string name="home_proxy_ip_check_pending">Not checked</string>
     <string name="home_proxy_ip_check_pending_value">Waiting</string>
