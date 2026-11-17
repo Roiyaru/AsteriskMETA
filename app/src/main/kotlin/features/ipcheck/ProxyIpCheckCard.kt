@@ -227,31 +227,43 @@ private fun ProxyIpCheckGroupSelector(
 
 /**
  * The two addresses of the checked group, side by side.
+ *
+ * The two sides are laid out as one table rather than as two columns: every field is a row of its
+ * own, so the value that runs onto a second line makes the row taller for both sides and the next
+ * field starts at the same height on either side. The side with the shorter answer keeps the room
+ * it does not need, and the rule between the families is one line across the table instead of one
+ * line per side at a different height.
  */
 @Composable
 private fun ProxyIpCheckEndpointRow(
     entry: IpCheckEndpoint,
     exit: IpCheckEndpoint,
 ) {
-    Row(
+    val showV6 = entry.rendersV6() || exit.rendersV6()
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
-        ProxyIpCheckEndpointColumn(
-            title = stringResource(R.string.home_proxy_ip_check_entry),
-            endpoint = entry,
-            modifier = Modifier.weight(1f),
+        ProxyIpCheckCells(
+            left = { ProxyIpCheckColumnTitle(stringResource(R.string.home_proxy_ip_check_entry)) },
+            right = { ProxyIpCheckColumnTitle(stringResource(R.string.home_proxy_ip_check_exit)) },
         )
-        ProxyIpCheckEndpointColumn(
-            title = stringResource(R.string.home_proxy_ip_check_exit),
-            endpoint = exit,
-            modifier = Modifier.weight(1f),
+        ProxyIpCheckFields(
+            left = { slot -> ProxyIpCheckAddressSlot(entry, slot) },
+            right = { slot -> ProxyIpCheckAddressSlot(exit, slot) },
         )
+        if (showV6) {
+            ProxyIpCheckSectionDivider()
+            ProxyIpCheckFields(
+                left = { slot -> ProxyIpCheckV6Slot(entry, slot) },
+                right = { slot -> ProxyIpCheckV6Slot(exit, slot) },
+            )
+        }
     }
 }
 
 /**
- * One address and the network it belongs to.
+ * One address and the network it belongs to, for the case where there is only one side.
  *
  * Every value is on its own line and copies itself when it is tapped, so a user can take the
  * address, the province, the autonomous system and the organization one at a time.
@@ -266,26 +278,87 @@ private fun ProxyIpCheckEndpointColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
+        ProxyIpCheckColumnTitle(title)
+        ProxyIpCheckSlots { slot -> ProxyIpCheckAddressSlot(endpoint, slot) }
+        if (endpoint.rendersV6()) {
+            ProxyIpCheckSectionDivider()
+            ProxyIpCheckSlots { slot -> ProxyIpCheckV6Slot(endpoint, slot) }
+        }
+    }
+}
+
+/** The label above an address. */
+@Composable
+private fun ProxyIpCheckColumnTitle(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+    )
+}
+
+/**
+ * One row of the table: the same field of both sides, so the two cells share a height.
+ */
+@Composable
+private fun ProxyIpCheckCells(
+    left: @Composable () -> Unit,
+    right: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) { left() }
+        Column(modifier = Modifier.weight(1f)) { right() }
+    }
+}
+
+/** The four fields of one side, one row of the table each. */
+@Composable
+private fun ProxyIpCheckFields(
+    left: @Composable (Int) -> Unit,
+    right: @Composable (Int) -> Unit,
+) {
+    ProxyIpCheckEndpointSlots.forEach { slot ->
+        ProxyIpCheckCells(
+            left = { left(slot) },
+            right = { right(slot) },
         )
-        if (endpoint.hasAddress) {
-            ProxyIpCheckAddressValue(endpoint.address)
-            ProxyIpCheckPlaceValue(endpoint)
-            ProxyIpCheckDetailValue(endpoint.asn)
-            ProxyIpCheckDetailValue(endpoint.organization)
-            ProxyIpCheckEndpointV6(endpoint)
-        } else {
-            Text(
+    }
+}
+
+/** The slots of one side, stacked, for the case where there is only one side. */
+@Composable
+private fun ProxyIpCheckSlots(content: @Composable (Int) -> Unit) {
+    ProxyIpCheckEndpointSlots.forEach { slot -> content(slot) }
+}
+
+/** The rule between the families. It crosses the whole table, so the two sides share one line. */
+@Composable
+private fun ProxyIpCheckSectionDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(top = 5.dp, bottom = 3.dp),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+}
+
+/**
+ * One field of the IPv4 side. A side without an address shows the placeholder in the first two
+ * slots and leaves the rest empty, which keeps the table rows where they are.
+ */
+@Composable
+private fun ProxyIpCheckAddressSlot(endpoint: IpCheckEndpoint, slot: Int) {
+    if (!endpoint.hasAddress) {
+        when (slot) {
+            0 -> Text(
                 text = stringResource(R.string.home_proxy_ip_check_pending_value),
                 style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
             )
-            Text(
+            1 -> Text(
                 text = stringResource(R.string.home_proxy_ip_check_unknown_network),
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -293,8 +366,60 @@ private fun ProxyIpCheckEndpointColumn(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        return
+    }
+    when (slot) {
+        0 -> ProxyIpCheckAddressValue(endpoint.address)
+        1 -> ProxyIpCheckPlaceValue(endpoint)
+        2 -> ProxyIpCheckDetailValue(endpoint.asn)
+        3 -> ProxyIpCheckDetailValue(endpoint.organization)
     }
 }
+
+/**
+ * One field of the IPv6 side, told apart from the IPv4 side by the rule above it.
+ *
+ * An address of this family is long enough that one line rarely holds it, so the parts are broken
+ * after the colons and the tail continues on a second line. The breaks are only for the eye: the
+ * value that is copied is the address itself.
+ */
+@Composable
+private fun ProxyIpCheckV6Slot(endpoint: IpCheckEndpoint, slot: Int) {
+    if (endpoint.v6Unsupported) {
+        if (slot == 0) {
+            Text(
+                text = stringResource(R.string.home_proxy_ip_check_ipv6_unsupported),
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        return
+    }
+    val v6 = endpoint.v6 ?: return
+    if (!v6.hasAddress) return
+    when (slot) {
+        0 -> ProxyIpCheckCopyableValue(
+            text = v6.address.withIpv6Breaks(),
+            copyText = v6.address,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontFeatureSettings = "tnum"),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        // The IPv6 side is described the same way as the IPv4 side: the two can belong to
+        // different networks even when they reach the same machine.
+        1 -> ProxyIpCheckPlaceValue(v6)
+        2 -> ProxyIpCheckDetailValue(v6.asn)
+        3 -> ProxyIpCheckDetailValue(v6.organization)
+    }
+}
+
+/** Whether the IPv6 part of a side has anything to say. */
+private fun IpCheckEndpoint.rendersV6(): Boolean {
+    return hasAddress && (v6Unsupported || v6?.hasAddress == true)
+}
+
+/** The fields a side is described by, in the order they are read. */
+private val ProxyIpCheckEndpointSlots = 0..3
 
 /**
  * The address of the endpoint, which copies itself when it is tapped.
@@ -406,44 +531,6 @@ private fun rememberCopyAction(text: String): () -> Unit {
         clipboard?.setPrimaryClip(ClipData.newPlainText(IpCheckClipLabel, text))
         scope.launch { services.tipNotifier.show(copiedMessage) }
     }
-}
-
-/**
- * The IPv6 side of the endpoint, under the IPv4 side and told apart from it by a rule.
- *
- * An address of this family is long enough that one line rarely holds it, so the parts are broken
- * after the colons and the tail continues on a second line. The breaks are only for the eye: the
- * value that is copied is the address itself.
- */
-@Composable
-private fun ProxyIpCheckEndpointV6(endpoint: IpCheckEndpoint) {
-    val v6 = endpoint.v6
-    val hasV6 = v6 != null && v6.hasAddress
-    if (!endpoint.v6Unsupported && !hasV6) return
-    HorizontalDivider(
-        modifier = Modifier.padding(top = 5.dp, bottom = 3.dp),
-        color = MaterialTheme.colorScheme.outlineVariant,
-    )
-    if (endpoint.v6Unsupported || v6 == null) {
-        Text(
-            text = stringResource(R.string.home_proxy_ip_check_ipv6_unsupported),
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-        return
-    }
-    ProxyIpCheckCopyableValue(
-        text = v6.address.withIpv6Breaks(),
-        copyText = v6.address,
-        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, fontFeatureSettings = "tnum"),
-        color = MaterialTheme.colorScheme.onSurface,
-    )
-    // The IPv6 side is described the same way as the IPv4 side: the two can belong to different
-    // networks even when they reach the same machine.
-    ProxyIpCheckPlaceValue(v6)
-    ProxyIpCheckDetailValue(v6.asn)
-    ProxyIpCheckDetailValue(v6.organization)
 }
 
 /**
