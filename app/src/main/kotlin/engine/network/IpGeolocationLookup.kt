@@ -36,10 +36,15 @@ internal data class IpGeolocation(
  * DB-IP City Lite reports the province and the city, and the ASN database behind the same service
  * reports the autonomous system and its operator. Both are queried over their free endpoints, so
  * no key is needed and nothing has to be shipped with the app.
+ *
+ * Some networks are described by only one of the city databases: an address can carry a country
+ * and a city and still have no province at all. A third free source is therefore asked for the
+ * region, but only when the answer so far has none, so a complete answer costs no extra request.
  */
 internal class IpGeolocationLookup(
     private val cityLookup: CityLookup = DbIpCityLookup(),
     private val asnLookup: AsnLookup = GeoJsAsnLookup(),
+    private val regionFallback: CityLookup = IpInfoLookup(),
 ) {
     /**
      * Looks up [address]. The two sources are queried independently, so a failure of one still
@@ -50,7 +55,7 @@ internal class IpGeolocationLookup(
         if (trimmed.isEmpty()) return IpGeolocation(address = "")
         val city = runCatching { cityLookup.lookup(trimmed) }.getOrNull() ?: IpGeolocation(address = trimmed)
         val asn = runCatching { asnLookup.lookup(trimmed) }.getOrNull() ?: IpGeolocation(address = trimmed)
-        return IpGeolocation(
+        val answer = IpGeolocation(
             address = trimmed,
             province = city.province.ifBlank { asn.province },
             organization = asn.organization.ifBlank { city.organization },
@@ -58,6 +63,14 @@ internal class IpGeolocationLookup(
             country = city.country.ifBlank { asn.country },
             countryCode = city.countryCode.ifBlank { asn.countryCode },
             city = city.city.ifBlank { asn.city },
+        )
+        if (answer.province.isNotBlank()) return answer
+        val fallback = runCatching { regionFallback.lookup(trimmed) }.getOrNull() ?: return answer
+        return answer.copy(
+            province = fallback.province,
+            city = answer.city.ifBlank { fallback.city },
+            country = answer.country.ifBlank { fallback.country },
+            countryCode = answer.countryCode.ifBlank { fallback.countryCode },
         )
     }
 }
@@ -127,6 +140,28 @@ internal class GeoJsAsnLookup(
 }
 
 /**
+ * The free ipinfo endpoint, used for the region of an address the city database had no region
+ * for. It answers the country as a code rather than a name, so only the region and the city are
+ * taken from it; the name of the country comes from the database that answered first.
+ */
+internal class IpInfoLookup(
+    private val endpoint: String = IpInfoEndpoint,
+) : CityLookup {
+    override suspend fun lookup(address: String): IpGeolocation = withContext(Dispatchers.IO) {
+        val body = httpGetText(endpoint + address + "/json", accept = "application/json")
+            ?: return@withContext IpGeolocation(address)
+        val json = runCatching { GeolocationJson.parseToJsonElement(body).jsonObject }.getOrNull()
+            ?: return@withContext IpGeolocation(address)
+        IpGeolocation(
+            address = address,
+            province = json.stringOrEmpty("region"),
+            countryCode = json.stringOrEmpty("country"),
+            city = json.stringOrEmpty("city"),
+        )
+    }
+}
+
+/**
  * The autonomous system number of an answer, in the `AS15169` form. The number is reported on its
  * own by the source, and the organization already carries the same prefix.
  */
@@ -171,5 +206,6 @@ private fun httpGetText(url: String, accept: String): String? {
 }
 
 private const val DbIpCityEndpoint = "https://api.db-ip.com/v2/free/"
+private const val IpInfoEndpoint = "https://ipinfo.io/"
 private const val GeoJsAsnEndpointTemplate = "https://{family}.geojs.io/v1/ip/geo/"
 private const val HttpLookupTimeoutMillis = 10_000

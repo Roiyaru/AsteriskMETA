@@ -81,10 +81,20 @@ internal fun ProxyIpCheckCard(
                 onSelectGroup = onSelectGroup,
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            ProxyIpCheckEndpointRow(
-                entry = state.result.entry,
-                exit = state.result.exit,
-            )
+            if (state.result.isDirect) {
+                // The group hands the traffic to the network, so one address answers the whole
+                // question and a second column would only repeat it.
+                ProxyIpCheckEndpointColumn(
+                    title = stringResource(R.string.home_proxy_ip_check_direct),
+                    endpoint = state.result.entry,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                ProxyIpCheckEndpointRow(
+                    entry = state.result.entry,
+                    exit = state.result.exit,
+                )
+            }
             ProxyIpCheckAction(
                 checking = state.checking,
                 enabled = state.groups.isNotEmpty(),
@@ -318,7 +328,9 @@ private fun ProxyIpCheckPlaceValue(endpoint: IpCheckEndpoint) {
     val region = endpoint.province.ifBlank { endpoint.city }
     val label = listOfNotNull(
         endpoint.country.takeIf { value -> value.isNotBlank() },
-        region.takeIf { value -> value.isNotBlank() },
+        // A city state reports the same name for the country and the region; saying it twice
+        // reads as a mistake rather than as an answer.
+        region.takeIf { value -> value.isNotBlank() && !value.equals(endpoint.country, ignoreCase = true) },
     ).joinToString(" · ")
     if (label.isBlank()) return
     val flag = rememberFlagResource(endpoint.countryCode)

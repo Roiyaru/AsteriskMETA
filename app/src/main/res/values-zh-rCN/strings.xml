@@ -64,6 +64,7 @@
     <string name="home_no_subscription">当前配置暂无订阅用量信息</string>
     <string name="home_proxy_ip_check_checking">检测中</string>
     <string name="home_proxy_ip_check_copied">%1$s 已复制到剪贴板</string>
+    <string name="home_proxy_ip_check_direct">本地网络直连</string>
     <string name="home_proxy_ip_check_done">已检测</string>
     <string name="home_proxy_ip_check_entry">入口 IP</string>
     <string name="home_proxy_ip_check_exit">出口 IP</string>

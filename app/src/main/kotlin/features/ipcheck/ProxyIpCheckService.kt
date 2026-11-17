@@ -52,6 +52,8 @@ internal data class IpCheckResult(
     val nodeHost: String = "",
     val dnsServer: String = "",
     val resolvedAddresses: List<String> = emptyList(),
+    /** The group carries the traffic itself, so there is no entry to tell from the exit. */
+    val isDirect: Boolean = false,
 )
 
 /**
@@ -97,6 +99,11 @@ internal class ProxyIpCheckService(
             ?: return IpCheckResult(entry = IpCheckEndpoint(error = IpCheckErrorUnknownGroup))
         val nodeId = group.resolvedNodeId(proxies)
         val nodeName = nodeId?.name.orEmpty()
+        if (nodeName in IpCheckDirectOutbounds) {
+            // The group hands the traffic to the network instead of to a node, so there is no
+            // entry and no exit to tell apart: both sides are the network of the device.
+            return IpCheckResult(entry = resolveDirect(), nodeName = nodeName, isDirect = true)
+        }
         val catalog = addressDirectory.read(appState)
         val nodeAddress = catalog.addresses[nodeName]
         val entry = resolveEntry(nodeAddress, catalog.dnsPolicy)
@@ -149,8 +156,39 @@ internal class ProxyIpCheckService(
      */
     private suspend fun resolveExit(appState: AppState): IpCheckEndpoint {
         val target = localProxyTarget(appState)
-        val probe = addressProbe.probe(target?.toProxy())
-        return probe.toEndpoint()
+        return describe(addressProbe.probe(target?.toProxy()))
+    }
+
+    /**
+     * The network of the device itself, for a group that hands the traffic to the network.
+     */
+    private suspend fun resolveDirect(): IpCheckEndpoint {
+        return describe(addressProbe.probe(proxy = null))
+    }
+
+    /**
+     * The address of a probe together with the network it belongs to.
+     *
+     * The endpoint that answers a probe reports the address and its own idea of the network, but
+     * its idea has no region: the answer names the country and the operator and nothing between
+     * them. The address the probe returned is therefore looked up like any other address, and the
+     * two answers are merged with the more specific one winning on each field.
+     */
+    private suspend fun describe(probe: PublicAddressProbeResult): IpCheckEndpoint {
+        if (!probe.isSuccessful) return probe.toEndpoint()
+        val location = runCatching { geolocationLookup.lookup(probe.address) }.getOrNull()
+            ?: IpGeolocation(address = probe.address)
+        return IpCheckEndpoint(
+            address = probe.address,
+            country = location.country.ifBlank { probe.country },
+            countryCode = location.countryCode.ifBlank { probe.countryCode },
+            province = location.province.ifBlank { probe.region },
+            city = location.city.ifBlank { probe.city },
+            // The autonomous system of an address is the one the endpoint that saw the request
+            // reports, because that is the network the request actually left from.
+            asn = probe.asn.ifBlank { location.asn },
+            organization = probe.organization.ifBlank { location.organization },
+        )
     }
 
     /**
@@ -235,5 +273,10 @@ internal fun String.isIpAddress(): Boolean {
 }
 
 internal const val IpCheckErrorUnknownGroup = "unknown_group"
+
+/**
+ * The outbounds of a group that hand the traffic to the network rather than to a node.
+ */
+internal val IpCheckDirectOutbounds = setOf("DIRECT", "PASS", "COMPATIBLE")
 internal const val IpCheckErrorUnknownNode = "unknown_node"
 internal const val IpCheckErrorResolutionFailed = "resolution_failed"

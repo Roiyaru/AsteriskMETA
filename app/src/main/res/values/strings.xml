@@ -64,6 +64,7 @@
     <string name="home_no_subscription">No subscription usage is available for this profile</string>
     <string name="home_proxy_ip_check_checking">Checking</string>
     <string name="home_proxy_ip_check_copied">%1$s copied to clipboard</string>
+    <string name="home_proxy_ip_check_direct">Direct connection</string>
     <string name="home_proxy_ip_check_done">Checked</string>
     <string name="home_proxy_ip_check_entry">Entry IP</string>
     <string name="home_proxy_ip_check_exit">Exit IP</string>
