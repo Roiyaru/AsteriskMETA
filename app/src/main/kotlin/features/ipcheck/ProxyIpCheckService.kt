@@ -5,6 +5,8 @@ package features.ipcheck
 
 import android.content.Context
 import app.AppState
+import engine.mihomo.MihomoIpCheckProbeFallback
+import engine.mihomo.MihomoIpCheckProbeGroupName
 import engine.mihomo.runtime.MihomoNodeAddress
 import engine.mihomo.runtime.MihomoNodeAddressDirectory
 import engine.mihomo.runtime.MihomoProxiesState
@@ -73,10 +75,13 @@ internal class ProxyIpCheckService(
     private val addressProbe: PublicAddressProbe = PublicAddressProbe(),
 ) {
     /**
-     * The groups a check can run against, in the order the runtime reports them.
+     * The groups a check can run against, in the order the runtime reports them. The selector the
+     * check routes its own probe through is not one of them: it exists for the check alone.
      */
     fun selectableGroups(proxies: MihomoProxiesState): List<MihomoProxyGroup> {
-        return proxies.groups.filter { group -> group.all.isNotEmpty() }
+        return proxies.groups.filter { group ->
+            group.all.isNotEmpty() && !group.hidden && group.name != MihomoIpCheckProbeGroupName
+        }
     }
 
     /**
@@ -102,12 +107,16 @@ internal class ProxyIpCheckService(
         if (nodeName in IpCheckDirectOutbounds) {
             // The group hands the traffic to the network instead of to a node, so there is no
             // entry and no exit to tell apart: both sides are the network of the device.
-            return IpCheckResult(entry = resolveDirect(), nodeName = nodeName, isDirect = true)
+            return IpCheckResult(
+                entry = resolveExit(appState, MihomoIpCheckProbeFallback),
+                nodeName = nodeName,
+                isDirect = true,
+            )
         }
         val catalog = addressDirectory.read(appState)
         val nodeAddress = catalog.addresses[nodeName]
         val entry = resolveEntry(nodeAddress, catalog.dnsPolicy)
-        val exit = resolveExit(appState)
+        val exit = resolveExit(appState, groupName)
         return IpCheckResult(
             entry = entry.first,
             exit = exit,
@@ -151,19 +160,35 @@ internal class ProxyIpCheckService(
     }
 
     /**
-     * The exit side: the address the tunnel leaves with. The request goes through the local
-     * proxy, so the answer is the address of the tunnel rather than the address of the device.
+     * The exit side: the address the tunnel leaves with when the traffic goes through [route].
+     *
+     * A request through the local proxy is routed by the rules, so on its own it reports the
+     * outbound the rules picked for the probe rather than the group the card names. The probe
+     * is therefore pointed at the checked group first, and the route is released afterwards.
      */
-    private suspend fun resolveExit(appState: AppState): IpCheckEndpoint {
+    private suspend fun resolveExit(appState: AppState, route: String): IpCheckEndpoint {
         val target = localProxyTarget(appState)
-        return describe(addressProbe.probe(target?.toProxy()))
+        val pinned = target != null && pinProbeRoute(appState, route)
+        return try {
+            describe(addressProbe.probe(target?.toProxy()))
+        } finally {
+            if (pinned) releaseProbeRoute(appState)
+        }
     }
 
     /**
-     * The network of the device itself, for a group that hands the traffic to the network.
+     * Points the probe route at [route]. A configuration the app does not compile, such as a raw
+     * configuration, has no such route, and then the probe can only report what the rules answer.
      */
-    private suspend fun resolveDirect(): IpCheckEndpoint {
-        return describe(addressProbe.probe(proxy = null))
+    private suspend fun pinProbeRoute(appState: AppState, route: String): Boolean {
+        return mihomoRuntime.selectProxy(appState, MihomoIpCheckProbeGroupName, route).isSuccess
+    }
+
+    /**
+     * Releases the probe route, so traffic that is not the check keeps following the rules.
+     */
+    private suspend fun releaseProbeRoute(appState: AppState) {
+        runCatching { mihomoRuntime.selectProxy(appState, MihomoIpCheckProbeGroupName, MihomoIpCheckProbeFallback) }
     }
 
     /**
