@@ -29,6 +29,7 @@ import engine.proxy.ProxyServiceUseCase
 import features.logs.AndroidAsteriskdLogRepository
 import features.logs.AndroidCoreLogRepository
 import features.logs.AndroidLogcatRepository
+import features.ipcheck.ProxyIpCheckRepository
 import features.monitoring.MonitoringRepository
 import features.resources.ResourceFileUseCase
 import features.settings.locale.ProvideAppLanguage
@@ -110,6 +111,9 @@ fun App(
     val monitoring = remember(appScope, appContext, rootAccess, stateStore, mihomoRuntime) {
         MonitoringRepository(appScope, appContext, rootAccess, stateStore, mihomoRuntime)
     }
+    val proxyIpCheck = remember(appScope, appContext, stateStore, mihomoRuntime) {
+        ProxyIpCheckRepository(appScope, appContext, mihomoRuntime, stateStore)
+    }
     val proxyEngine = remember(application) { application.proxyEngine }
     val enhancementModuleCoordinator = remember(appContext) {
         EnhancementModuleCoordinator { AndroidEnhancementModuleBackend(appContext) }
@@ -160,6 +164,7 @@ fun App(
         mihomoRuntime,
         mihomoProviderUsage,
         monitoring,
+        proxyIpCheck,
         proxyServiceUseCase,
         requestVpnPermission,
         switchRunModeUseCase,
@@ -189,6 +194,7 @@ fun App(
             mihomoRuntime = mihomoRuntime,
             mihomoProviderUsage = mihomoProviderUsage,
             monitoring = monitoring,
+            proxyIpCheck = proxyIpCheck,
             proxyServiceUseCase = proxyServiceUseCase,
             requestVpnPermission = requestVpnPermission,
             switchRunModeUseCase = switchRunModeUseCase,
