@@ -167,7 +167,7 @@ private fun ProxyIpCheckVisibilityToggle(
         modifier = Modifier.size(32.dp),
     ) {
         Icon(
-            imageVector = if (masked) AsteriskIcons.VisibilityOff else AsteriskIcons.Visibility,
+            imageVector = if (masked) AsteriskIcons.Rounded.VisibilityOff else AsteriskIcons.Rounded.Visibility,
             contentDescription = stringResource(
                 if (masked) {
                     R.string.home_proxy_ip_check_show_details
