@@ -40,6 +40,10 @@ internal fun MutableMap<String, Any?>.putMihomoIpCheckProbeRouting(
         ?.mapNotNull { group -> normalize(group) }
         ?.toMutableList()
         ?: mutableListOf()
+    // A configuration that already defines the name keeps its own group: two groups of the same
+    // name would stop the core from starting, and the check is worth less than the tunnel.
+    val taken = groups.any { group -> (group as? Map<*, *>)?.get("name") == MihomoIpCheckProbeGroupName }
+    if (taken) return
     val members = groups
         .mapNotNull { group -> (group as? Map<*, *>)?.get("name") as? String }
         .filter { name -> name.isNotBlank() }
@@ -49,7 +53,7 @@ internal fun MutableMap<String, Any?>.putMihomoIpCheckProbeRouting(
         "name" to MihomoIpCheckProbeGroupName,
         "type" to "select",
         "hidden" to true,
-        "proxies" to members,
+        "proxies" to members.distinct(),
     )
     put("proxy-groups", groups)
 
