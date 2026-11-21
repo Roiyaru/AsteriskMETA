@@ -422,6 +422,19 @@ internal class MihomoRuntimeRepository(
         }
     }
 
+    suspend fun getRules(appState: AppState): Result<List<MihomoRuleRuntimeItem>> {
+        return runCatching {
+            require(appState.proxyRunning) { "Proxy service is not running" }
+            require(appState.hasUsableMihomoProfile()) { "Mihomo profile is not configured" }
+            val control = resolveMihomoControlConfig(appState)
+            val backend = resolveInteractiveBackend(appState, control)
+            withContext(Dispatchers.IO) {
+                ensureInteractiveRuntime(appState, backend)
+                client.getRules(control)
+            }
+        }
+    }
+
     suspend fun closeConnection(appState: AppState, connectionId: String): Result<Boolean> {
         return runCatching {
             require(appState.proxyRunning) { "Proxy service is not running" }

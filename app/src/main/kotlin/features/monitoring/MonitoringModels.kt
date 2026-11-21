@@ -4,6 +4,7 @@
 package features.monitoring
 
 import engine.mihomo.runtime.MihomoConnectionsState
+import engine.mihomo.runtime.MihomoRuleRuntimeItem
 import engine.mihomo.runtime.connectionCounts
 import features.monitoring.resource.ProcessStatsSample
 import features.monitoring.resource.ProcessStatsSourceKind
@@ -40,6 +41,13 @@ internal data class MonitoringConnectionsSummary(
     val sessionUploadBytes: Long? = null,
     val sessionDownloadBytes: Long? = null,
     val snapshot: MihomoConnectionsState = MihomoConnectionsState(),
+    val status: ConnectionMonitorStatus = ConnectionMonitorStatus.ServiceStopped,
+    val error: String = "",
+    val stale: Boolean = false,
+)
+
+internal data class MonitoringRulesSummary(
+    val rules: List<MihomoRuleRuntimeItem> = emptyList(),
     val status: ConnectionMonitorStatus = ConnectionMonitorStatus.ServiceStopped,
     val error: String = "",
     val stale: Boolean = false,
@@ -87,6 +95,7 @@ internal data class MonitoringState(
     val serviceRunning: Boolean = false,
     val resource: MonitoringResourceSummary = MonitoringResourceSummary(),
     val connections: MonitoringConnectionsSummary = MonitoringConnectionsSummary(),
+    val rules: MonitoringRulesSummary = MonitoringRulesSummary(),
     val traffic: MonitoringTrafficSummary = MonitoringTrafficSummary(),
     val network: MonitoringNetworkSummary = MonitoringNetworkSummary(),
 )

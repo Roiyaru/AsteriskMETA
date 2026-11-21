@@ -169,6 +169,46 @@ internal class MonitoringRepository(
         return result
     }
 
+    suspend fun refreshRules(): Result<Unit> {
+        val appState = stateStore.state.value
+        if (!appState.proxyRunning) {
+            mutableState.update { current ->
+                current.copy(rules = MonitoringRulesSummary(status = ConnectionMonitorStatus.ServiceStopped))
+            }
+            return Result.success(Unit)
+        }
+        mutableState.update { current ->
+            if (current.rules.rules.isEmpty() && current.rules.status != ConnectionMonitorStatus.Loading) {
+                current.copy(rules = current.rules.copy(status = ConnectionMonitorStatus.Loading, error = ""))
+            } else {
+                current
+            }
+        }
+        return mihomoRuntime.getRules(appState)
+            .map { rules ->
+                mutableState.update { current ->
+                    current.copy(
+                        rules = MonitoringRulesSummary(
+                            rules = rules,
+                            status = ConnectionMonitorStatus.Available,
+                        ),
+                    )
+                }
+            }
+            .onFailure { error ->
+                if (error is CancellationException) throw error
+                mutableState.update { current ->
+                    current.copy(
+                        rules = current.rules.copy(
+                            status = ConnectionMonitorStatus.Error,
+                            error = error.message.orEmpty(),
+                            stale = current.rules.rules.isNotEmpty(),
+                        ),
+                    )
+                }
+            }
+    }
+
     private fun refreshRuntimeSummary(running: Boolean) {
         mutableState.update { current ->
             current.copy(

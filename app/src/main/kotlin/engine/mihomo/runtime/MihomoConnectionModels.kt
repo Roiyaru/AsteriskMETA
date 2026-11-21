@@ -3,6 +3,7 @@
 
 package engine.mihomo.runtime
 
+import utils.intValue
 import utils.longValue
 import utils.arrayValue
 import utils.objectValue
@@ -41,6 +42,32 @@ internal data class MihomoConnectionsState(
     val connections: List<MihomoConnection> = emptyList(),
     val updatedAtMillis: Long = 0L,
 )
+
+internal data class MihomoRuleRuntimeItem(
+    val type: String,
+    val payload: String,
+    val proxy: String = "",
+    val ruleCount: Int = 0,
+    val hits: Long = 0L,
+    val lastHitAtMillis: Long? = null,
+)
+
+internal fun parseMihomoRulesJson(content: String): List<MihomoRuleRuntimeItem> {
+    val root = ConnectionJson.parseToJsonElement(content) as? JsonObject
+        ?: error("Invalid Mihomo rules response")
+    return root.arrayValue("rules").orEmpty().mapNotNull { element ->
+        val rule = element as? JsonObject ?: return@mapNotNull null
+        MihomoRuleRuntimeItem(
+            type = rule.stringValue("type").orEmpty(),
+            payload = rule.stringValue("payload").orEmpty(),
+            proxy = rule.stringValue("proxy").orEmpty(),
+            ruleCount = rule.intValue("size") ?: 0,
+            hits = rule.longValue("hits") ?: 0L,
+            // A zero time (year one) parses far before the epoch; treat it as never hit.
+            lastHitAtMillis = rule.stringValue("hitAt")?.toRfc3339MillisOrNull()?.takeIf { it > 0L },
+        )
+    }
+}
 
 internal fun parseMihomoConnectionsJson(
     content: String,
