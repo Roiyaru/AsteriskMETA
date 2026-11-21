@@ -913,7 +913,6 @@ private fun RuleCard(
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         chain.forEachIndexed { position, link ->
                             if (position > 0) {
