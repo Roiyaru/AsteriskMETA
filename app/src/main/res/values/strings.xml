@@ -193,7 +193,7 @@
     <string name="monitor_rules_never_hit">Never hit</string>
     <string name="monitor_rules_no_match">No matching rules</string>
     <string name="monitor_rules_search">Search rules</string>
-    <string name="monitor_rules_total">Rules</string>
+    <string name="monitor_rules_total">Total rules</string>
     <string name="monitor_rules_unknown_hit">Last hit unknown</string>
 
     <!-- Monitoring - Resources -->
