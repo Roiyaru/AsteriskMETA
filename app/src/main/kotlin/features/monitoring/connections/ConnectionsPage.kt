@@ -65,6 +65,7 @@ import app.R
 import app.collectAppState
 import coil3.compose.AsyncImage
 import engine.mihomo.runtime.MihomoConnection
+import engine.mihomo.runtime.MihomoRuleOutbound
 import engine.mihomo.runtime.MihomoRuleRuntimeItem
 import features.monitoring.ConnectionMonitorStatus
 import features.monitoring.ConnectionRouteFilter
@@ -338,7 +339,12 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
                             StatusCard(stringResource(R.string.monitor_data_stale))
                         }
                         items(filteredRules.size, key = { index -> "rule-$index" }) { index ->
-                            RuleCard(rule = filteredRules[index], index = index + 1)
+                            val rule = filteredRules[index]
+                            RuleCard(
+                                rule = rule,
+                                index = index + 1,
+                                outbound = rulesState.outbounds[rule.proxy],
+                            )
                         }
                     }
                 }
@@ -846,7 +852,11 @@ private fun StatusCard(message: String, loading: Boolean = false) {
 }
 
 @Composable
-private fun RuleCard(rule: MihomoRuleRuntimeItem, index: Int) {
+private fun RuleCard(
+    rule: MihomoRuleRuntimeItem,
+    index: Int,
+    outbound: MihomoRuleOutbound?,
+) {
     Card(
         modifier = ContentWidthModifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -885,20 +895,35 @@ private fun RuleCard(rule: MihomoRuleRuntimeItem, index: Int) {
                 }
             }
             if (rule.proxy.isNotBlank()) {
+                val outboundName = outbound?.name?.takeIf(String::isNotBlank) ?: rule.proxy
+                val outboundIcon = outbound?.icon.orEmpty()
                 Spacer(Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
                         .padding(start = 28.dp)
                         .clip(AsteriskShapeTokens.SmallContainer)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                        .padding(start = 6.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
                 ) {
-                    Text(
-                        text = rule.proxy,
-                        style = MaterialTheme.typography.labelLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (outboundIcon.isNotBlank()) {
+                            AsyncImage(
+                                model = outboundIcon,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clip(AsteriskShapeTokens.SmallContainer),
+                                contentScale = ContentScale.Fit,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(
+                            text = outboundName,
+                            style = MaterialTheme.typography.labelLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }

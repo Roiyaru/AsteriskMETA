@@ -12,6 +12,7 @@ import engine.mihomo.raw.loadSelectedRawConfig
 import engine.mihomo.raw.usesRawMihomoConfig
 import engine.mihomo.runtime.MihomoConnection
 import engine.mihomo.runtime.MihomoConnectionsState
+import engine.mihomo.runtime.MihomoRulesState
 import engine.mihomo.runtime.MihomoRuntimeRepository
 import engine.mihomo.runtime.connectionCounts
 import engine.proxy.LocalProxyLoopbackAddress
@@ -185,11 +186,12 @@ internal class MonitoringRepository(
             }
         }
         return mihomoRuntime.getRules(appState)
-            .map { rules ->
+            .map { state ->
                 mutableState.update { current ->
                     current.copy(
                         rules = MonitoringRulesSummary(
-                            rules = rules,
+                            rules = state.rules,
+                            outbounds = state.outbounds,
                             status = ConnectionMonitorStatus.Available,
                         ),
                     )

@@ -77,6 +77,7 @@ internal data class MihomoProxyNode(
     val title: String = id.name,
     val subtitle: String = type,
     val udp: Boolean = false,
+    val icon: String = "",
     val delay: Int? = null,
     val delayStatus: MihomoDelayStatus? = delay?.let { MihomoDelayStatus.Success },
     val delayError: String = "",
@@ -115,6 +116,27 @@ internal data class MihomoProxiesState(
     fun node(name: String): MihomoProxyNode {
         return node(MihomoProxyNodeId(name))
     }
+}
+
+/** The final outbound of a rule policy: the leaf node a group selection resolves to. */
+internal data class MihomoRuleOutbound(
+    val name: String,
+    val icon: String = "",
+)
+
+internal fun MihomoProxiesState.resolveRuleOutbound(policyName: String): MihomoRuleOutbound {
+    var name = policyName
+    var groupIcon = ""
+    // Follow the current selection down nested groups; the hop limit stops selection cycles.
+    repeat(8) {
+        val group = allGroups.firstOrNull { candidate -> candidate.name == name } ?: return@repeat
+        val selected = group.now
+        if (selected.isBlank() || selected == name) return MihomoRuleOutbound(name, group.icon)
+        groupIcon = group.icon
+        name = selected
+    }
+    val leafIcon = nodeById[MihomoProxyNodeId(name)]?.icon.orEmpty()
+    return MihomoRuleOutbound(name, leafIcon.ifBlank { groupIcon })
 }
 
 /**

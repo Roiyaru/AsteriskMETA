@@ -54,6 +54,11 @@ internal data class MihomoRuleRuntimeItem(
     val lastMissAtMillis: Long? = null,
 )
 
+internal data class MihomoRulesState(
+    val rules: List<MihomoRuleRuntimeItem> = emptyList(),
+    val outbounds: Map<String, MihomoRuleOutbound> = emptyMap(),
+)
+
 internal fun parseMihomoRulesJson(content: String): List<MihomoRuleRuntimeItem> {
     val root = ConnectionJson.parseToJsonElement(content) as? JsonObject
         ?: error("Invalid Mihomo rules response")
