@@ -6,6 +6,7 @@ package engine.vpn
 import android.content.Context
 import android.content.Intent
 import android.net.VpnService
+import android.os.SystemClock
 import app.AppState
 import app.R
 import app.modes.RunModeVpnService
@@ -77,12 +78,24 @@ internal class VpnMihomoEngine(
         if (prepareIntent != null && !requestVpnPermission(prepareIntent)) {
             error(context.getString(R.string.error_vpn_permission_denied))
         }
+        // Claim the core for the service before the profile is even built: a standby core loaded
+        // in this process meanwhile would compete with the tunnel for the same CPU and memory.
+        AsteriskVpnService.beginStart()
         try {
+            val configAt = SystemClock.elapsedRealtime()
             val config = VpnMihomoConfigFactory.create(context, request)
+            AndroidAppLogger.info(
+                LogTag,
+                "Built the VPN start config in ${SystemClock.elapsedRealtime() - configAt}ms",
+            )
             stopLogStream()
             clearVpnServiceLogsAsApp(File(config.coreLogPaths.logDirectoryPath()), LogTag)
             try {
                 AsteriskVpnService.start(context = context, config = config)
+                AndroidAppLogger.info(
+                    LogTag,
+                    "VPN Service accepted the start ${SystemClock.elapsedRealtime() - configAt}ms after the config was built",
+                )
             } catch (error: VpnServiceStartException) {
                 if (error.cause !is VpnServiceProcessExitedException) throw error
                 // The service process kills itself when the previous core does not shut down
@@ -94,6 +107,8 @@ internal class VpnMihomoEngine(
             if (error is CancellationException) throw error
             AndroidAppLogger.error(LogTag, "Failed to start VPN Service", error)
             throw error
+        } finally {
+            AsteriskVpnService.endStart()
         }
     }
 

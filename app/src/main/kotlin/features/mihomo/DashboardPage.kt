@@ -48,6 +48,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -127,6 +128,7 @@ import features.home.buildNetworkActivityLineBands
 import features.home.buildNetworkActivityWaveform
 import features.home.buildHomeSubscriptionContent
 import features.home.formatHomeRuntimeBytes
+import features.ipcheck.ProxyIpCheckCard
 import features.home.formatHomeServiceUptime
 import features.home.toHomeSubscriptionSummaryOrNull
 import features.home.toMihomoModeOrNull
@@ -253,6 +255,20 @@ fun MihomoDashboardPage(
     val controllerState = remember(appState, controllerRuntimeState, rawMihomoMode) {
         buildHomeControllerState(appState, controllerRuntimeState, rawMihomoMode)
     }
+    val proxyIpCheckRepository = services.proxyIpCheck
+    val proxyIpCheckState by remember(proxyIpCheckRepository) {
+        proxyIpCheckRepository.state
+    }.collectAsState()
+    val proxyIpCheckProxies by remember(services.mihomoRuntime) {
+        services.mihomoRuntime.state
+            .map { state -> state.proxies }
+            .distinctUntilChanged()
+    }.collectAsState(initial = services.mihomoRuntime.state.value.proxies)
+    // The groups follow the runtime snapshot, so a group that appears or disappears is reflected
+    // in the card without a manual refresh.
+    LaunchedEffect(proxyIpCheckProxies) {
+        proxyIpCheckRepository.updateGroups(proxyIpCheckProxies)
+    }
     val networkActivityState = remember(appState.proxyRunning, trafficPresentation) {
         buildHomeNetworkActivityState(
             appState = appState,
@@ -357,6 +373,28 @@ fun MihomoDashboardPage(
                         }
                     }
                 }
+            }
+            item("proxy_ip_check") {
+                ProxyIpCheckCard(
+                    state = proxyIpCheckState,
+                    onSelectGroup = { groupName ->
+                        proxyIpCheckRepository.selectGroup(groupName)
+                    },
+                    onStartCheck = {
+                        proxyIpCheckRepository.updateGroups(proxyIpCheckProxies)
+                        proxyIpCheckRepository.check(proxyIpCheckProxies)
+                    },
+                    // Without the tunnel of this app there is no group to measure, so the card
+                    // reports the network of the device and offers nothing to pick.
+                    localNetworkOnly = !appState.proxyRunning,
+                    masked = appState.hideIpCheckSensitive,
+                    onToggleMask = {
+                        updateAppState { state ->
+                            state.copy(hideIpCheckSensitive = !state.hideIpCheckSensitive)
+                        }
+                    },
+                    modifier = HomeContentModifier,
+                )
             }
             item("monitoring") {
                 // Equal row weights use the tallest card's intrinsic height for all four cards.

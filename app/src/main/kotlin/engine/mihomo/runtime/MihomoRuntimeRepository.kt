@@ -444,6 +444,27 @@ internal class MihomoRuntimeRepository(
         }
     }
 
+    suspend fun getRules(appState: AppState): Result<MihomoRulesState> {
+        return runCatching {
+            require(appState.proxyRunning) { "Proxy service is not running" }
+            require(appState.hasUsableMihomoProfile()) { "Mihomo profile is not configured" }
+            val control = resolveMihomoControlConfig(appState)
+            val backend = resolveInteractiveBackend(appState, control)
+            withContext(Dispatchers.IO) {
+                ensureInteractiveRuntime(appState, backend)
+                val rules = client.getRules(control)
+                // Resolve each policy to its current leaf outbound for the rules monitor.
+                val proxies = state.value.proxies
+                MihomoRulesState(
+                    rules = rules,
+                    outbounds = rules.associate { rule ->
+                        rule.proxy to proxies.resolveRuleOutboundChain(rule.proxy)
+                    },
+                )
+            }
+        }
+    }
+
     suspend fun closeConnection(appState: AppState, connectionId: String): Result<Boolean> {
         return runCatching {
             require(appState.proxyRunning) { "Proxy service is not running" }
@@ -914,8 +935,16 @@ internal class MihomoRuntimeRepository(
     ) {
         when (backend) {
             MihomoRuntimeBackend.Bridge -> {
-                if (appState.runMode == RunModeVpnService && VpnSession.isRunning(appContext)) {
+                // The service owns the core from the moment a start is in flight, not only once
+                // the session is running: loading a standby core next to the service's would put
+                // two copies of the core on one phone while the tunnel is coming up.
+                if (appState.runMode == RunModeVpnService &&
+                    (VpnSession.isRunning(appContext) || AsteriskVpnService.isStarting())
+                ) {
                     AndroidMihomoRuntime.releaseStandby()
+                    if (!VpnSession.isRunning(appContext)) {
+                        AndroidAppLogger.info(LogTag, "Skipped the standby core while the VPN service is starting")
+                    }
                     throw ConnectException("VPN session owns the Mihomo runtime")
                 }
                 val newlyLoaded = AndroidMihomoRuntime.ensureLoaded(

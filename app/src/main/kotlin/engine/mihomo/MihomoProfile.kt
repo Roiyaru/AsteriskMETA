@@ -365,6 +365,7 @@ private fun MutableMap<String, Any?>.putAsteriskRuntimeOverrides(
     }
     putDnsOverrides(appState, forceDns)
     putDnsHijackOverrides(appState, runMode)
+    putMihomoIpCheckProbeRouting(::normalizeYamlValue)
     putNtpWriteToSystemOverride()
 }
 
