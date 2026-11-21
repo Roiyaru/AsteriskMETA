@@ -56,7 +56,7 @@ internal data class MihomoRuleRuntimeItem(
 
 internal data class MihomoRulesState(
     val rules: List<MihomoRuleRuntimeItem> = emptyList(),
-    val outbounds: Map<String, MihomoRuleOutbound> = emptyMap(),
+    val outbounds: Map<String, List<MihomoRuleOutbound>> = emptyMap(),
 )
 
 internal fun parseMihomoRulesJson(content: String): List<MihomoRuleRuntimeItem> {

@@ -10,6 +10,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -851,11 +853,12 @@ private fun StatusCard(message: String, loading: Boolean = false) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RuleCard(
     rule: MihomoRuleRuntimeItem,
     index: Int,
-    outbound: MihomoRuleOutbound?,
+    outbound: List<MihomoRuleOutbound>?,
 ) {
     Card(
         modifier = ContentWidthModifier,
@@ -895,34 +898,49 @@ private fun RuleCard(
                 }
             }
             if (rule.proxy.isNotBlank()) {
-                val outboundName = outbound?.name?.takeIf(String::isNotBlank) ?: rule.proxy
-                val outboundIcon = outbound?.icon.orEmpty()
+                val chain = outbound?.takeIf { it.isNotEmpty() }
+                    ?: listOf(MihomoRuleOutbound(rule.proxy))
                 Spacer(Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
                         .padding(start = 28.dp)
                         .clip(AsteriskShapeTokens.SmallContainer)
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest)
-                        .padding(start = 6.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (outboundIcon.isNotBlank()) {
-                            AsyncImage(
-                                model = outboundIcon,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .clip(AsteriskShapeTokens.SmallContainer),
-                                contentScale = ContentScale.Fit,
+                    // The full policy path: every group on the selection chain followed by the
+                    // leaf node, each with its icon when the core provides one.
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        chain.forEachIndexed { position, link ->
+                            if (position > 0) {
+                                Text(
+                                    text = "→",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (link.icon.isNotBlank()) {
+                                AsyncImage(
+                                    model = link.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(AsteriskShapeTokens.SmallContainer),
+                                    contentScale = ContentScale.Fit,
+                                )
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Text(
+                                text = link.name,
+                                style = MaterialTheme.typography.labelLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                            Spacer(Modifier.width(6.dp))
                         }
-                        Text(
-                            text = outboundName,
-                            style = MaterialTheme.typography.labelLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
                     }
                 }
             }

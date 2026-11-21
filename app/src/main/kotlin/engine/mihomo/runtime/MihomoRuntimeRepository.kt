@@ -436,7 +436,7 @@ internal class MihomoRuntimeRepository(
                 MihomoRulesState(
                     rules = rules,
                     outbounds = rules.associate { rule ->
-                        rule.proxy to proxies.resolveRuleOutbound(rule.proxy)
+                        rule.proxy to proxies.resolveRuleOutboundChain(rule.proxy)
                     },
                 )
             }

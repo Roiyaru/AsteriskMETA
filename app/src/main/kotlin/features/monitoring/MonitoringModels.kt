@@ -49,7 +49,7 @@ internal data class MonitoringConnectionsSummary(
 
 internal data class MonitoringRulesSummary(
     val rules: List<MihomoRuleRuntimeItem> = emptyList(),
-    val outbounds: Map<String, MihomoRuleOutbound> = emptyMap(),
+    val outbounds: Map<String, List<MihomoRuleOutbound>> = emptyMap(),
     val status: ConnectionMonitorStatus = ConnectionMonitorStatus.ServiceStopped,
     val error: String = "",
     val stale: Boolean = false,

@@ -118,25 +118,30 @@ internal data class MihomoProxiesState(
     }
 }
 
-/** The final outbound of a rule policy: the leaf node a group selection resolves to. */
+/** One link of a rule's outbound chain: a group or the leaf node, with its icon. */
 internal data class MihomoRuleOutbound(
     val name: String,
     val icon: String = "",
 )
 
-internal fun MihomoProxiesState.resolveRuleOutbound(policyName: String): MihomoRuleOutbound {
+/**
+ * Follows a rule policy down its group selection chain, keeping every level so the UI can
+ * show the full path (for example Leak Netfish -> Node Selection -> HK 1). The hop limit
+ * stops selection cycles; the leaf node keeps its own icon.
+ */
+internal fun MihomoProxiesState.resolveRuleOutboundChain(policyName: String): List<MihomoRuleOutbound> {
     var name = policyName
-    var groupIcon = ""
-    // Follow the current selection down nested groups; the hop limit stops selection cycles.
+    val chain = mutableListOf<MihomoRuleOutbound>()
     repeat(8) {
         val group = allGroups.firstOrNull { candidate -> candidate.name == name } ?: return@repeat
+        chain += MihomoRuleOutbound(name, group.icon)
         val selected = group.now
-        if (selected.isBlank() || selected == name) return MihomoRuleOutbound(name, group.icon)
-        groupIcon = group.icon
+        if (selected.isBlank() || selected == name) return chain
         name = selected
     }
     val leafIcon = nodeById[MihomoProxyNodeId(name)]?.icon.orEmpty()
-    return MihomoRuleOutbound(name, leafIcon.ifBlank { groupIcon })
+    chain += MihomoRuleOutbound(name, leafIcon)
+    return chain
 }
 
 /**
