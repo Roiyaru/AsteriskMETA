@@ -187,7 +187,7 @@
     <string name="monitor_rules_never_hit">未命中</string>
     <string name="monitor_rules_no_match">无匹配规则</string>
     <string name="monitor_rules_search">搜索规则</string>
-    <string name="monitor_rules_total">规则总数</string>
+    <string name="monitor_rules_total">规则数量</string>
     <string name="monitor_rules_unknown_hit">最后命中未知</string>
 
     <!-- Monitoring - Resources -->
