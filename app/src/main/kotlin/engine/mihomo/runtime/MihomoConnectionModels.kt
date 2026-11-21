@@ -50,6 +50,8 @@ internal data class MihomoRuleRuntimeItem(
     val ruleCount: Int = 0,
     val hits: Long = 0L,
     val lastHitAtMillis: Long? = null,
+    val misses: Long = 0L,
+    val lastMissAtMillis: Long? = null,
 )
 
 internal fun parseMihomoRulesJson(content: String): List<MihomoRuleRuntimeItem> {
@@ -57,14 +59,20 @@ internal fun parseMihomoRulesJson(content: String): List<MihomoRuleRuntimeItem> 
         ?: error("Invalid Mihomo rules response")
     return root.arrayValue("rules").orEmpty().mapNotNull { element ->
         val rule = element as? JsonObject ?: return@mapNotNull null
+        // Match statistics live in the nested "extra" object; the top-level "hits" field
+        // only exists on older cores and stays at zero there, so prefer "extra".
+        val extra = rule.objectValue("extra")
+        fun JsonObject.zeroTimeToNull(name: String): Long? =
+            stringValue(name)?.toRfc3339MillisOrNull()?.takeIf { it > 0L }
         MihomoRuleRuntimeItem(
             type = rule.stringValue("type").orEmpty(),
             payload = rule.stringValue("payload").orEmpty(),
             proxy = rule.stringValue("proxy").orEmpty(),
-            ruleCount = rule.intValue("size") ?: 0,
-            hits = rule.longValue("hits") ?: 0L,
-            // A zero time (year one) parses far before the epoch; treat it as never hit.
-            lastHitAtMillis = rule.stringValue("hitAt")?.toRfc3339MillisOrNull()?.takeIf { it > 0L },
+            ruleCount = (rule.intValue("size") ?: 0).takeIf { it > 0 } ?: 0,
+            hits = extra?.longValue("hitCount") ?: rule.longValue("hits") ?: 0L,
+            lastHitAtMillis = extra?.zeroTimeToNull("hitAt"),
+            misses = extra?.longValue("missCount") ?: 0L,
+            lastMissAtMillis = extra?.zeroTimeToNull("missAt"),
         )
     }
 }

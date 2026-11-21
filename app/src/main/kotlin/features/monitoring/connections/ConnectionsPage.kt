@@ -863,19 +863,28 @@ private fun RuleCard(rule: MihomoRuleRuntimeItem, index: Int) {
 @Composable
 private fun ruleHitSummary(rule: MihomoRuleRuntimeItem): String {
     val hits = stringResource(R.string.monitor_rules_hits, rule.hits)
-    return when (val lastHit = rule.lastHitAtMillis) {
-        null -> if (rule.hits > 0L) {
-            listOf(hits, stringResource(R.string.monitor_rules_unknown_hit)).joinToString(" · ")
-        } else {
-            stringResource(R.string.monitor_rules_never_hit)
+    return when {
+        rule.hits > 0L -> when (val lastHit = rule.lastHitAtMillis) {
+            null -> listOf(hits, stringResource(R.string.monitor_rules_unknown_hit)).joinToString(" · ")
+            else -> listOf(
+                hits,
+                stringResource(
+                    R.string.monitor_rules_last_hit,
+                    java.text.DateFormat.getDateTimeInstance().format(java.util.Date(lastHit)),
+                ),
+            ).joinToString(" · ")
         }
-        else -> listOf(
-            hits,
-            stringResource(
-                R.string.monitor_rules_last_hit,
-                java.text.DateFormat.getDateTimeInstance().format(java.util.Date(lastHit)),
-            ),
+        rule.misses > 0L -> listOfNotNull(
+            stringResource(R.string.monitor_rules_never_hit),
+            stringResource(R.string.monitor_rules_misses, rule.misses),
+            rule.lastMissAtMillis?.let { lastMiss ->
+                stringResource(
+                    R.string.monitor_rules_last_miss,
+                    java.text.DateFormat.getDateTimeInstance().format(java.util.Date(lastMiss)),
+                )
+            },
         ).joinToString(" · ")
+        else -> stringResource(R.string.monitor_rules_never_hit)
     }
 }
 
