@@ -935,16 +935,8 @@ internal class MihomoRuntimeRepository(
     ) {
         when (backend) {
             MihomoRuntimeBackend.Bridge -> {
-                // The service owns the core from the moment a start is in flight, not only once
-                // the session is running: loading a standby core next to the service's would put
-                // two copies of the core on one phone while the tunnel is coming up.
-                if (appState.runMode == RunModeVpnService &&
-                    (VpnSession.isRunning(appContext) || AsteriskVpnService.isStarting())
-                ) {
+                if (appState.runMode == RunModeVpnService && VpnSession.isRunning(appContext)) {
                     AndroidMihomoRuntime.releaseStandby()
-                    if (!VpnSession.isRunning(appContext)) {
-                        AndroidAppLogger.info(LogTag, "Skipped the standby core while the VPN service is starting")
-                    }
                     throw ConnectException("VPN session owns the Mihomo runtime")
                 }
                 val newlyLoaded = AndroidMihomoRuntime.ensureLoaded(
