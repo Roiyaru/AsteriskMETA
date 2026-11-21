@@ -210,13 +210,16 @@ jobs:
           fail_on_unmatched_files: true
           prerelease: true
           body: |
-            AsteriskMETA 合并上游测试包（含 Rule Providers 规则阅读器）。
+            AsteriskMETA 测试包：连接监控「规则」模块。
             - Release 包名 `org.asterisk.zcc.ameta.dev`（与官方包并存，可覆盖历史测试包），测试签名与历史 test-* 一致
             - Debug 包名 `org.asterisk.zcc.ameta.dev.debug`（可调试，独立签名，可与 Release 包同时安装）
             - versionCode `${{ steps.version.outputs.version_code }}`
-            - 已合并 upstream/main（含连接监控「应用」分组、上游进程归属修复）
-            - 新增：Rule Providers 全屏阅读器——行号、搜索（大小写/正则/上下跳转/匹配计数/高亮），mrs 规则集解码为可搜索文本
-            测试方式：安装 arm64-v8a 包 -> Providers -> Rule Providers -> 打开 provider 查看与搜索。
+            - 新增：连接监控「规则」标签（按钮位于「直连」之后）：
+              - 读取当前加载配置的全部规则（核心 /rules API），逐条卡片展示：序号、规则类型、匹配内容、RuleSet 规则条数、命中出站徽章
+              - 命中统计（命中次数、最后命中时间）直接内联显示在规则卡片上，无需点开详情查看
+              - 支持按规则内容/类型/出站搜索，进入页面后每 4 秒自动刷新命中数据
+              - 空状态、加载中、数据过期与服务未启用均有对应提示
+            测试方式：安装 arm64-v8a 包 -> 连接 -> 点按「规则」标签查看规则列表与命中统计。
 
       - name: Verify release assets
         shell: bash
