@@ -10,9 +10,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -505,18 +507,61 @@ private fun ConnectionsMonitorStatus(
 
 @Composable
 private fun RulesMonitorStatus(state: MonitoringRulesSummary) {
-    val summary = when (state.status) {
-        ConnectionMonitorStatus.ServiceStopped -> stringResource(R.string.monitor_service_not_enabled)
-        ConnectionMonitorStatus.Loading -> stringResource(R.string.monitor_loading)
-        ConnectionMonitorStatus.Error -> state.error.ifBlank { stringResource(R.string.monitor_data_unavailable) }
-        ConnectionMonitorStatus.Available -> stringResource(R.string.monitor_connections_live)
-    }
-    MonitoringStatusHeader(
-        title = stringResource(R.string.monitor_rules_total),
-        value = state.rules.size.toString(),
-        summary = summary,
+    // The core resets rule statistics on every profile load, so the numbers below restart
+    // when the proxy starts and stay frozen with the last snapshot while it is stopped.
+    val totalHits = state.rules.sumOf(MihomoRuleRuntimeItem::hits)
+    Card(
         modifier = ContentWidthModifier,
-    )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        shape = MaterialTheme.shapes.extraLarge,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .padding(18.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.monitor_rules_total),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = state.rules.size.toString(),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontFeatureSettings = "tnum",
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+                    .padding(vertical = 10.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+            Column(modifier = Modifier.weight(1f).padding(start = 18.dp)) {
+                Text(
+                    text = stringResource(R.string.monitor_rules_hits_total),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = totalHits.toString(),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontFeatureSettings = "tnum",
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -874,15 +919,9 @@ private fun ruleHitSummary(rule: MihomoRuleRuntimeItem): String {
                 ),
             ).joinToString(" · ")
         }
-        rule.misses > 0L -> listOfNotNull(
+        rule.misses > 0L -> listOf(
             stringResource(R.string.monitor_rules_never_hit),
             stringResource(R.string.monitor_rules_misses, rule.misses),
-            rule.lastMissAtMillis?.let { lastMiss ->
-                stringResource(
-                    R.string.monitor_rules_last_miss,
-                    java.text.DateFormat.getDateTimeInstance().format(java.util.Date(lastMiss)),
-                )
-            },
         ).joinToString(" · ")
         else -> stringResource(R.string.monitor_rules_never_hit)
     }

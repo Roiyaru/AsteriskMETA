@@ -186,6 +186,7 @@
     <!-- Monitoring - Rules -->
     <string name="monitor_rules_empty">No rules</string>
     <string name="monitor_rules_hits">Hits %1$d</string>
+    <string name="monitor_rules_hits_total">Total hits</string>
     <string name="monitor_rules_last_hit">Last hit %1$s</string>
     <string name="monitor_rules_last_miss">Last miss %1$s</string>
     <string name="monitor_rules_misses">Misses %1$d</string>

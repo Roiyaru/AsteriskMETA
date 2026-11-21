@@ -180,6 +180,7 @@
     <!-- Monitoring - Rules -->
     <string name="monitor_rules_empty">暂无规则</string>
     <string name="monitor_rules_hits">命中 %1$d 次</string>
+    <string name="monitor_rules_hits_total">命中次数</string>
     <string name="monitor_rules_last_hit">最后命中 %1$s</string>
     <string name="monitor_rules_last_miss">最后未命中 %1$s</string>
     <string name="monitor_rules_misses">未命中 %1$d 次</string>
