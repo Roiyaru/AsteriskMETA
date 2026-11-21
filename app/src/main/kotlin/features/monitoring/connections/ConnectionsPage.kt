@@ -961,10 +961,7 @@ private fun ruleHitSummary(rule: MihomoRuleRuntimeItem): String {
                 ),
             ).joinToString(" · ")
         }
-        rule.misses > 0L -> listOf(
-            stringResource(R.string.monitor_rules_never_hit),
-            stringResource(R.string.monitor_rules_misses, rule.misses),
-        ).joinToString(" · ")
+        rule.misses > 0L -> stringResource(R.string.monitor_rules_never_hit)
         else -> stringResource(R.string.monitor_rules_never_hit)
     }
 }
