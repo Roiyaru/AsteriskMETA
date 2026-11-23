@@ -10,10 +10,10 @@ import engine.mihomo.runtime.MihomoDnsRoute
  * The filters the DNS monitor offers.
  *
  * The filters fall into two dimensions. The source says how the core reached the
- * answer: directly, through the proxy or from its own cache. The type says what the
- * core asked for. A record passes when it matches the source filters and the type
- * filters, and the filters within one dimension accept a record that matches any of
- * them.
+ * upstream: directly or through the proxy. The type says what the core asked for. A
+ * record passes when it matches the source filters and the type filters, and the
+ * filters within one dimension accept a record that matches any of them. A cached
+ * answer is not a source, so the monitor keeps the cache on the record itself.
  */
 internal enum class DnsRecordFilter {
     /** The core reached the upstream directly. */
@@ -21,9 +21,6 @@ internal enum class DnsRecordFilter {
 
     /** The core reached the upstream through the proxy. */
     Proxy,
-
-    /** The core answered from its own cache. */
-    Cached,
 
     /** An address lookup for IPv4. */
     A,
@@ -35,11 +32,10 @@ internal enum class DnsRecordFilter {
     Https,
 }
 
-/** The filters that say how the core reached the answer. */
+/** The filters that say how the core reached the upstream. */
 internal val DnsSourceFilter: List<DnsRecordFilter> = listOf(
     DnsRecordFilter.Direct,
     DnsRecordFilter.Proxy,
-    DnsRecordFilter.Cached,
 )
 
 /** The filters that say what the core asked for. */
@@ -49,11 +45,9 @@ internal val DnsTypeFilter: List<DnsRecordFilter> = listOf(
     DnsRecordFilter.Https,
 )
 
-/** The filters that say how the core reached the answer. */
+/** The filters that say how the core reached the upstream. */
 internal val DnsRecordFilter.isSource: Boolean
-    get() = this == DnsRecordFilter.Direct ||
-        this == DnsRecordFilter.Proxy ||
-        this == DnsRecordFilter.Cached
+    get() = this == DnsRecordFilter.Direct || this == DnsRecordFilter.Proxy
 
 /** Whether the record passes the selected filters. */
 internal fun MihomoDnsRecord.matchesDnsFilters(filters: Set<DnsRecordFilter>): Boolean {
@@ -69,7 +63,6 @@ private fun MihomoDnsRecord.matchesDnsSourceFilters(filters: Set<DnsRecordFilter
         when (filter) {
             DnsRecordFilter.Direct -> route == MihomoDnsRoute.Direct
             DnsRecordFilter.Proxy -> route == MihomoDnsRoute.Proxy
-            DnsRecordFilter.Cached -> cached
             else -> false
         }
     }

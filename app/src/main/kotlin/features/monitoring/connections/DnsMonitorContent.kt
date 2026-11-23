@@ -256,7 +256,6 @@ internal fun dnsFilterLabel(filter: DnsRecordFilter): String = when (filter) {
     DnsRecordFilter.A -> "A"
     DnsRecordFilter.AAAA -> "AAAA"
     DnsRecordFilter.Https -> stringResource(R.string.monitor_dns_filter_https)
-    DnsRecordFilter.Cached -> stringResource(R.string.monitor_dns_cached)
     DnsRecordFilter.Proxy -> stringResource(R.string.monitor_dns_route_proxy)
     DnsRecordFilter.Direct -> stringResource(R.string.monitor_dns_route_direct)
 }
