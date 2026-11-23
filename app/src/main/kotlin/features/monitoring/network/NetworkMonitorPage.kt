@@ -8,10 +8,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -69,7 +69,6 @@ import java.util.UUID
 import java.util.Locale
 import ui.icons.AsteriskIcons as Icons
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun NetworkMonitorPage(padding: PaddingValues) {
     val horizontalPadding = rememberPageGutter()
@@ -175,43 +174,37 @@ internal fun NetworkMonitorPage(padding: PaddingValues) {
                         BoxWithConstraints(Modifier.fillMaxWidth()) {
                             val sideBySide = LocalAdaptiveWindow.current.supportsWideContent &&
                                 target == null && maxWidth >= 620.dp * LocalDensity.current.fontScale
-                            FlowRow(
-                                maxItemsInEachRow = if (sideBySide) 2 else 1,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                AddressFamily.entries.forEach { family ->
-                                    val isIpv4 = family == AddressFamily.Ipv4
-                                    val general = target?.let { strategyProbe.measurement(family, ProbeTarget.General) }
-                                    val cloudflare = target?.let { strategyProbe.measurement(family, ProbeTarget.Cloudflare) }
-                                    val entryRefreshing = family in strategyProbe.entryRefreshingFamilies
-                                    val familyRefreshing = if (target == null) {
-                                        family in network.publicProbe.refreshingFamilies
-                                    } else {
-                                        entryRefreshing || general?.refreshing == true || cloudflare?.refreshing == true
-                                    }
-                                    key(strategyProbe, family) {
-                                        Box(Modifier.weight(1f)) {
-                                            PublicAddressFamilyCard(
-                                                family = family,
-                                                results = AddressFamilyProbeResults(
-                                                    general = general?.displayResult()
-                                                        ?: if (isIpv4) network.publicProbe.ipv4 else network.publicProbe.ipv6,
-                                                    cloudflare = cloudflare?.displayResult()
-                                                        ?: if (isIpv4) network.publicProbe.cloudflareIpv4 else network.publicProbe.cloudflareIpv6,
-                                                    entries = target?.let { strategyProbe.entry(family).orEmpty() },
-                                                ),
-                                                entryRefreshing = entryRefreshing,
-                                                refreshing = familyRefreshing,
-                                                retryEnabled = if (target == null) !network.publicProbe.refreshing
-                                                    else strategyProbe.entryRefreshingFamilies.isEmpty(),
-                                                onCopy = ::copy,
-                                                onRetry = {
-                                                    if (target == null) services.monitoring.refreshPublicNetworkProbe(family)
-                                                    else refreshStrategy(family)
-                                                },
-                                            )
-                                        }
+                            PublicAddressFamilyLayout(sideBySide) { family, cardModifier ->
+                                val isIpv4 = family == AddressFamily.Ipv4
+                                val general = target?.let { strategyProbe.measurement(family, ProbeTarget.General) }
+                                val cloudflare = target?.let { strategyProbe.measurement(family, ProbeTarget.Cloudflare) }
+                                val entryRefreshing = family in strategyProbe.entryRefreshingFamilies
+                                val familyRefreshing = if (target == null) {
+                                    family in network.publicProbe.refreshingFamilies
+                                } else {
+                                    entryRefreshing || general?.refreshing == true || cloudflare?.refreshing == true
+                                }
+                                key(strategyProbe, family) {
+                                    Box(cardModifier) {
+                                        PublicAddressFamilyCard(
+                                            family = family,
+                                            results = AddressFamilyProbeResults(
+                                                general = general?.displayResult()
+                                                    ?: if (isIpv4) network.publicProbe.ipv4 else network.publicProbe.ipv6,
+                                                cloudflare = cloudflare?.displayResult()
+                                                    ?: if (isIpv4) network.publicProbe.cloudflareIpv4 else network.publicProbe.cloudflareIpv6,
+                                                entries = target?.let { strategyProbe.entry(family).orEmpty() },
+                                            ),
+                                            entryRefreshing = entryRefreshing,
+                                            refreshing = familyRefreshing,
+                                            retryEnabled = if (target == null) !network.publicProbe.refreshing
+                                                else strategyProbe.entryRefreshingFamilies.isEmpty(),
+                                            onCopy = ::copy,
+                                            onRetry = {
+                                                if (target == null) services.monitoring.refreshPublicNetworkProbe(family)
+                                                else refreshStrategy(family)
+                                            },
+                                        )
                                     }
                                 }
                             }
@@ -267,6 +260,30 @@ internal fun NetworkMonitorPage(padding: PaddingValues) {
 }
 
 @Composable
+private fun PublicAddressFamilyLayout(
+    sideBySide: Boolean,
+    content: @Composable (AddressFamily, Modifier) -> Unit,
+) {
+    // A proxy target card uses BoxWithConstraints. Use layouts that measure
+    // it directly instead of asking for the intrinsic size of a weighted child.
+    if (sideBySide) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AddressFamily.entries.forEach { family -> content(family, Modifier.weight(1f)) }
+        }
+    } else {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AddressFamily.entries.forEach { family -> content(family, Modifier.fillMaxWidth()) }
+        }
+    }
+}
+
+@Composable
 private fun NetworkRefreshIndicator() {
     CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
 }
@@ -286,7 +303,6 @@ private data class AddressFamilyProbeResults(
             entries?.any { it.hasRetryableError } == true
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PublicAddressFamilyCard(
     family: AddressFamily,

@@ -28,6 +28,10 @@
     <string name="common_all">All</string>
     <string name="common_back">Back</string>
     <string name="common_basic">Basic</string>
+    <string name="editor_switch_unsaved_title">Unsaved changes</string>
+    <string name="editor_switch_unsaved_message">Save or discard your changes before switching to another entry.</string>
+    <string name="editor_switch_discard">Discard and switch</string>
+    <string name="editor_switch_cancel">Keep editing</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_clear">Clear</string>
     <string name="common_clipboard_empty">Clipboard is empty</string>
@@ -172,9 +176,8 @@
     <string name="monitor_rules_empty">No rules</string>
     <string name="monitor_rules_hits">Hits %1$d</string>
     <string name="monitor_rules_hits_total">Total hits</string>
+    <string name="monitor_rules_hits_unavailable">Hit statistics unavailable</string>
     <string name="monitor_rules_last_hit">Last hit %1$s</string>
-    <string name="monitor_rules_last_miss">Last miss %1$s</string>
-    <string name="monitor_rules_misses">Misses %1$d</string>
     <string name="monitor_rules_never_hit">Never hit</string>
     <string name="monitor_rules_no_match">No matching rules</string>
     <string name="monitor_rules_search">Search rules</string>
@@ -425,6 +428,7 @@
     <string name="mihomo_profile_override_script_applied">Script: {name}</string>
     <string name="mihomo_profile_override_script_none">Do not apply</string>
     <string name="mihomo_profile_preview">Preview</string>
+    <string name="mihomo_profile_preview_empty">This profile has no saved YAML.</string>
     <string name="mihomo_profile_preview_failed">Failed to preview profile</string>
     <string name="mihomo_profile_preview_title">Preview {name}</string>
     <string name="mihomo_profile_properties">Profile properties</string>
@@ -491,6 +495,7 @@
     <string name="mihomo_profile_save_sync_stage_verifying">profile verification</string>
     <string name="mihomo_profile_save_sync_success">Profile synced and saved</string>
     <string name="mihomo_profile_save_sync_verifying">Verifying profile…</string>
+    <string name="mihomo_profile_use">Use profile</string>
     <string name="mihomo_profile_selected">Selected</string>
     <string name="mihomo_profile_sync">Sync</string>
     <string name="mihomo_profile_sync_all">Update all subscriptions</string>
@@ -1028,7 +1033,6 @@
     <string name="settings_traffic_stats_notification_summary">Show current speed and total traffic in notifications and the status bar</string>
 
     <!-- Quick settings tile -->
-    <string name="quick_settings_tile_label">AsteriskMETA</string>
     <string name="quick_settings_tile_processing">Processing…</string>
     <string name="quick_settings_tile_running">Proxy running</string>
     <string name="quick_settings_tile_stopped">Proxy stopped</string>
@@ -1067,6 +1071,7 @@
     <string name="proxy_app_list_scan_china_skipped_global">Skipped in all-app mode</string>
     <string name="proxy_app_list_search_label">Search apps</string>
     <string name="proxy_app_list_show_system_apps">Show system apps</string>
+    <string name="proxy_app_list_selected_apps">Selected apps (%1$d)</string>
     <string name="proxy_app_list_title">Proxy app list</string>
     <string name="settings_app_management_summary">Choose which installed apps use the proxy and how</string>
 
@@ -1220,7 +1225,6 @@
     <!-- Logs -->
     <string name="core_logs_title">Core logs</string>
     <string name="error_log_export_launcher_missing">Log export launcher is not registered</string>
-    <string name="logcat_logs_title">Logcat</string>
     <string name="logs_clear_message">This permanently removes all entries in this log.</string>
     <string name="logs_clear_title">Clear logs?</string>
     <string name="logs_copied_to_clipboard">Copied to clipboard</string>

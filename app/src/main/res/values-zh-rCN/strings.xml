@@ -28,6 +28,10 @@
     <string name="common_all">全部</string>
     <string name="common_back">返回</string>
     <string name="common_basic">基础</string>
+    <string name="editor_switch_unsaved_title">有未保存的修改</string>
+    <string name="editor_switch_unsaved_message">切换到其他条目前，请保存或放弃当前修改。</string>
+    <string name="editor_switch_discard">放弃修改并切换</string>
+    <string name="editor_switch_cancel">继续编辑</string>
     <string name="common_cancel">取消</string>
     <string name="common_clear">清除</string>
     <string name="common_clipboard_empty">剪贴板为空</string>
@@ -166,9 +170,8 @@
     <string name="monitor_rules_empty">暂无规则</string>
     <string name="monitor_rules_hits">命中 %1$d 次</string>
     <string name="monitor_rules_hits_total">命中次数</string>
+    <string name="monitor_rules_hits_unavailable">命中统计不可用</string>
     <string name="monitor_rules_last_hit">最后命中 %1$s</string>
-    <string name="monitor_rules_last_miss">最后未命中 %1$s</string>
-    <string name="monitor_rules_misses">未命中 %1$d 次</string>
     <string name="monitor_rules_never_hit">未命中</string>
     <string name="monitor_rules_no_match">无匹配规则</string>
     <string name="monitor_rules_search">搜索规则</string>
@@ -418,6 +421,7 @@
     <string name="mihomo_profile_override_script_applied">脚本：{name}</string>
     <string name="mihomo_profile_override_script_none">不应用</string>
     <string name="mihomo_profile_preview">预览</string>
+    <string name="mihomo_profile_preview_empty">此配置暂无已保存的 YAML。</string>
     <string name="mihomo_profile_preview_failed">预览配置失败</string>
     <string name="mihomo_profile_preview_title">预览 {name}</string>
     <string name="mihomo_profile_properties">配置属性</string>
@@ -480,6 +484,7 @@
     <string name="mihomo_profile_save_sync_stage_verifying">校验配置</string>
     <string name="mihomo_profile_save_sync_success">配置同步成功并已保存</string>
     <string name="mihomo_profile_save_sync_verifying">正在校验配置…</string>
+    <string name="mihomo_profile_use">使用此配置</string>
     <string name="mihomo_profile_selected">已选择</string>
     <string name="mihomo_profile_sync">同步</string>
     <string name="mihomo_profile_sync_all">更新所有订阅</string>
@@ -1010,7 +1015,6 @@
     <string name="settings_traffic_stats_notification_summary">在通知和状态栏中显示当前速度和累计流量</string>
 
     <!-- Quick settings tile -->
-    <string name="quick_settings_tile_label">AsteriskMETA</string>
     <string name="quick_settings_tile_processing">正在处理…</string>
     <string name="quick_settings_tile_running">代理运行中</string>
     <string name="quick_settings_tile_stopped">代理已停止</string>
@@ -1049,6 +1053,7 @@
     <string name="proxy_app_list_scan_china_skipped_global">全应用模式下已跳过</string>
     <string name="proxy_app_list_search_label">搜索应用名称</string>
     <string name="proxy_app_list_show_system_apps">显示系统应用</string>
+    <string name="proxy_app_list_selected_apps">已选应用（%1$d）</string>
     <string name="proxy_app_list_title">分应用代理</string>
     <string name="settings_app_management_summary">选择哪些应用使用代理以及代理方式</string>
 
@@ -1200,7 +1205,6 @@
     <!-- Logs -->
     <string name="core_logs_title">核心日志</string>
     <string name="error_log_export_launcher_missing">日志导出请求器未注册</string>
-    <string name="logcat_logs_title">Logcat</string>
     <string name="logs_clear_message">此操作会永久移除当前日志中的全部条目。</string>
     <string name="logs_clear_title">清除日志？</string>
     <string name="logs_copied_to_clipboard">已复制到剪贴板</string>
