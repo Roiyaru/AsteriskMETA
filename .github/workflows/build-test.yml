@@ -131,9 +131,9 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk_version" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ndk_version" >> "$GITHUB_ENV"
 
-      - name: Build release and debug APKs
+      - name: Build release APK
         shell: bash
-        run: ./gradlew --no-daemon :app:assembleRelease :app:assembleDebug -Pcore=mihomo -PversionCode="$VERSION_CODE" 2>&1 | tee build.log
+        run: ./gradlew --no-daemon :app:assembleRelease -Pcore=mihomo -PversionCode="$VERSION_CODE" -PbuildAbis=arm64-v8a -PbuildUniversalApk=false 2>&1 | tee build.log
 
       - name: Upload build logs on failure
         if: failure()
@@ -166,6 +166,13 @@ jobs:
           shopt -s nullglob
           for apk in app/build/outputs/apk/release/*.apk; do
             base_name="$(basename "$apk" .apk)"
+            case "$base_name" in
+              *arm64-v8a*) ;;
+              *)
+                echo "::error::Unexpected architecture in $base_name"
+                exit 1
+                ;;
+            esac
             aligned_apk="$RUNNER_TEMP/${base_name}-aligned.apk"
             signed_apk="signed-apks/${base_name}-signed.apk"
             "$zipalign" -f -p 4 "$apk" "$aligned_apk"
@@ -185,21 +192,10 @@ jobs:
             echo "::error::No signed APKs produced"
             exit 1
           fi
-
-      - name: Collect debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          # The debug variant keeps the runner's throwaway debug signature and a separate
-          # application id (org.asterisk.zcc.ameta.dev.debug) for ad-hoc on-device testing.
-          find app/build/outputs/apk -type f -name '*.apk' | sort
-          debug_apk="$(find app/build/outputs/apk/debug -type f -name '*arm64-v8a*' | head -n 1)"
-          if [ -z "$debug_apk" ]; then
-            echo "::error::No arm64-v8a debug APK was produced."
+          if [ ${#apks[@]} -ne 1 ]; then
+            echo "::error::Expected exactly one arm64-v8a APK, found ${#apks[@]}"
             exit 1
           fi
-          cp "$debug_apk" signed-apks/AsteriskMETA-debug-arm64-v8a.apk
-          ls -l signed-apks
 
       - name: Generate release notes
         shell: bash
@@ -228,7 +224,7 @@ jobs:
             echo "AsteriskMETA 测试包（构建于 \`${GITHUB_SHA:0:8}\`）。"
             echo ""
             echo "- Release 包名 \`org.asterisk.zcc.ameta.dev\`（与官方包并存，可覆盖历史测试包），测试签名与历史 test-* 一致"
-            echo "- Debug 包名 \`org.asterisk.zcc.ameta.dev.debug\`（可调试，独立签名，可与 Release 包同时安装）"
+            echo "- 仅提供 arm64-v8a 架构的 release 包"
             echo "- versionCode \`${VERSION_CODE}\`"
             echo ""
             echo "### 本次变更"

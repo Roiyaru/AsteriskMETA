@@ -20,6 +20,16 @@ require(bundledCoreId == "mihomo" || bundledCoreId == "meow") {
 }
 val bundledCoreArtifact = if (bundledCoreId == "meow") "libclash-rs" else "libclash"
 
+// A build may narrow the architectures it produces, so the test build can ship only
+// the architecture its testers use. The default keeps every supported architecture.
+val requestedAbis: List<String> = providers.gradleProperty("buildAbis").orNull
+    ?.split(',')
+    ?.map { it.trim() }
+    ?.filter { it.isNotEmpty() }
+    ?.takeIf { it.isNotEmpty() }
+    ?: ProjectConfig.SUPPORTED_ANDROID_ABIS
+val buildUniversalApk: Boolean = providers.gradleProperty("buildUniversalApk").orNull?.toBoolean() ?: true
+
 android {
     namespace = "app"
     buildToolsVersion = ProjectConfig.BUILD_TOOLS_VERSION
@@ -62,8 +72,8 @@ android {
         abi {
             isEnable = true
             reset()
-            include(*ProjectConfig.SUPPORTED_ANDROID_ABIS.toTypedArray())
-            isUniversalApk = true
+            include(*requestedAbis.toTypedArray())
+            isUniversalApk = buildUniversalApk
         }
     }
 
