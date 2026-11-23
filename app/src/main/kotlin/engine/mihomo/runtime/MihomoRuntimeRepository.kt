@@ -972,6 +972,16 @@ internal class MihomoRuntimeRepository(
         }
     }
 
+    /**
+     * The control endpoint the DNS monitor subscribes to.
+     *
+     * The monitor reads the core's debug log stream, so it needs the same endpoint the
+     * rest of the runtime uses.
+     */
+    fun resolveDnsControlConfig(appState: AppState): Result<MihomoControlConfig> = runCatching {
+        resolveMihomoControlConfig(appState)
+    }
+
     private fun resolveMihomoControlConfig(appState: AppState): MihomoControlConfig {
         if (!appState.usesRawMihomoConfig()) return appState.mihomoControlConfig(appContext)
         require(appState.proxyRunning) { "Raw configuration API is available only while the proxy service is running" }

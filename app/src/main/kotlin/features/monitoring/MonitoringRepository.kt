@@ -19,6 +19,7 @@ import engine.proxy.LocalProxyRuntime
 import engine.proxy.toLocalProxyOptions
 import engine.proxy.toLocalProxyOptionsOrNull
 import features.logs.AndroidAppLogger
+import features.monitoring.dns.MihomoDnsRecordCollector
 import features.monitoring.network.AddressFamily
 import features.monitoring.network.AndroidNetworkMonitor
 import features.monitoring.network.PublicNetworkProbeClient
@@ -77,6 +78,7 @@ internal class MonitoringRepository(
         proxyProvider = { resolvePublicProbeProxy() },
     )
     private val trafficLedgerStore = TrafficLedgerStore(context)
+    private val dnsRecordCollector = MihomoDnsRecordCollector(context)
     private var previousProcessSnapshot: ProcessTickSnapshot? = null
     private var previousProcessSource: ProcessStatsSourceKind? = null
     private var networkPageWasVisible = false
@@ -131,6 +133,15 @@ internal class MonitoringRepository(
                         plan.trafficIntervalMillis?.let { interval ->
                             launch { collectTrafficStats(interval) }
                         }
+                        if (plan.collectDnsRecords) {
+                            launch {
+                                try {
+                                    collectDnsRecords()
+                                } finally {
+                                    mutableState.update { it.copy(dns = MonitoringDnsSummary()) }
+                                }
+                            }
+                        }
                     }
                 }
         }
@@ -180,6 +191,58 @@ internal class MonitoringRepository(
         val result = mihomoRuntime.closeAllConnections(stateStore.state.value)
         if (result.isSuccess) refreshConnections()
         return result
+    }
+
+    /**
+     * Streams the DNS lookups the core answered while the monitor is open.
+     *
+     * The core reports every lookup on its debug log stream, so the collector subscribes
+     * to that stream instead of polling a query history the controller does not expose.
+     */
+    private suspend fun collectDnsRecords() {
+        val running = stateStore.state.map { it.proxyRunning }.distinctUntilChanged()
+        val epoch = mihomoRuntime.state.map { it.runtimeEpoch }.distinctUntilChanged()
+        combine(running, epoch) { isRunning, runtimeEpoch -> runtimeEpoch.takeIf { isRunning } }
+            .distinctUntilChanged()
+            .collectLatest { session ->
+                val status = if (session == null) {
+                    ConnectionMonitorStatus.ServiceStopped
+                } else {
+                    ConnectionMonitorStatus.Loading
+                }
+                mutableState.update { it.copy(dns = MonitoringDnsSummary(status = status)) }
+                if (session == null) return@collectLatest
+                val control = mihomoRuntime.resolveDnsControlConfig(stateStore.state.value).getOrElse { error ->
+                    mutableState.update { current ->
+                        current.copy(
+                            dns = current.dns.copy(
+                                status = ConnectionMonitorStatus.Error,
+                                error = error.message.orEmpty(),
+                            ),
+                        )
+                    }
+                    return@collectLatest
+                }
+                launch {
+                    dnsRecordCollector.records.collect { records ->
+                        mutableState.update { current ->
+                            current.copy(
+                                dns = current.dns.copy(
+                                    records = records,
+                                    status = ConnectionMonitorStatus.Available,
+                                ),
+                            )
+                        }
+                    }
+                }
+                dnsRecordCollector.collect(control)
+            }
+    }
+
+    /** Drops the collected DNS records. */
+    fun clearDnsRecords() {
+        dnsRecordCollector.clear()
+        mutableState.update { it.copy(dns = it.dns.copy(records = emptyList())) }
     }
 
     private suspend fun collectRules(intervalMillis: Long) {

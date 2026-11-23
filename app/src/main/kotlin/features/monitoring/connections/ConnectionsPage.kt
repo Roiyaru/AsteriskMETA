@@ -77,6 +77,7 @@ import features.monitoring.ConnectionMonitorStatus
 import features.monitoring.ConnectionRouteFilter
 import features.monitoring.ConnectionSort
 import features.monitoring.MonitoringConnectionsFocusState
+import features.monitoring.MonitoringDnsSummary
 import features.monitoring.MonitoringIntent
 import features.monitoring.MonitoringRulesSummary
 import features.monitoring.MonitoringScaffold
@@ -86,7 +87,10 @@ import features.monitoring.ObserveMonitoring
 import features.monitoring.buildMonitoringConnectionsFocusState
 import features.monitoring.clearDisplayedConnections
 import features.monitoring.discardDisplayedConnection
+import features.monitoring.dns.DnsRecordFilter
+import features.monitoring.dns.filterDnsRecords
 import features.monitoring.reduceConnections
+import features.monitoring.replacesConnections
 import features.monitoring.resolveDisplayedConnections
 import features.monitoring.restrictsRoute
 import features.proxy.app.model.ProxyAppIconRequest
@@ -119,12 +123,17 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
     val iconSizePx = with(LocalDensity.current) { ANDROID_APP_ICON_SIZE_DP.dp.roundToPx() }
     var query by rememberSaveable { mutableStateOf("") }
     var rulesQuery by rememberSaveable { mutableStateOf("") }
+    var dnsQuery by rememberSaveable { mutableStateOf("") }
+    // A set of enums cannot go into a bundle, so the filters stay in memory.
+    var dnsFilters by remember { mutableStateOf(emptySet<DnsRecordFilter>()) }
     var route by rememberSaveable { mutableStateOf(ConnectionRouteFilter.App) }
     val showRules = route == ConnectionRouteFilter.Rules
+    val showDns = route == ConnectionRouteFilter.Dns
     var sort by rememberSaveable { mutableStateOf(ConnectionSort.Traffic) }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val rulesListState = rememberLazyListState()
+    val dnsListState = rememberLazyListState()
     var expandedAppKeys by remember { mutableStateOf(emptySet<String>()) }
     var showMenu by rememberSaveable { mutableStateOf(false) }
     var showCloseAllConfirmation by rememberSaveable { mutableStateOf(false) }
@@ -164,7 +173,13 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
     val liveIds = pageSnapshot.active.mapTo(HashSet(), MihomoConnection::id)
     val closeFailed = stringResource(R.string.monitor_connections_close_failed)
     val closeAllFailed = stringResource(R.string.monitor_connections_close_all_failed)
-    ObserveMonitoring(if (showRules) MonitoringIntent.Rules else MonitoringIntent.Connections)
+    ObserveMonitoring(
+        when {
+            showRules -> MonitoringIntent.Rules
+            showDns -> MonitoringIntent.Dns
+            else -> MonitoringIntent.Connections
+        },
+    )
 
     val displayedConnections = resolveDisplayedConnections(
         latest = connections,
@@ -172,7 +187,7 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
         paused = paused,
     )
     val visibleConnections = remember(listedConnections, query, route, sort) {
-        if (showRules) emptyList() else reduceConnections(
+        if (route.replacesConnections) emptyList() else reduceConnections(
             connections = listedConnections,
             query = query,
             route = route,
@@ -198,6 +213,15 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
     }
     val filteredRules = remember(rulesState.rules, rulesQuery) {
         filterRules(rulesState.rules, rulesQuery)
+    }
+    val dnsState = when {
+        !appState.proxyRunning -> MonitoringDnsSummary()
+        monitoring.dns.status == ConnectionMonitorStatus.ServiceStopped ->
+            MonitoringDnsSummary(status = ConnectionMonitorStatus.Loading)
+        else -> monitoring.dns
+    }
+    val filteredDnsRecords = remember(dnsState.records, dnsFilters, dnsQuery) {
+        filterDnsRecords(dnsState.records, dnsFilters, dnsQuery)
     }
 
     fun closeConnection(connection: MihomoConnection) {
@@ -243,15 +267,37 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
     }
 
     MonitoringScaffold(
-        searchQuery = if (showRules) rulesQuery else query,
-        onSearchQueryChange = { value -> if (showRules) rulesQuery = value else query = value },
+        searchQuery = when {
+            showRules -> rulesQuery
+            showDns -> dnsQuery
+            else -> query
+        },
+        onSearchQueryChange = { value ->
+            when {
+                showRules -> rulesQuery = value
+                showDns -> dnsQuery = value
+                else -> query = value
+            }
+        },
         searchPlaceholder = stringResource(
-            if (showRules) R.string.monitor_rules_search else R.string.monitor_connections_search,
+            when {
+                showRules -> R.string.monitor_rules_search
+                showDns -> R.string.monitor_dns_search
+                else -> R.string.monitor_connections_search
+            },
         ),
         title = stringResource(R.string.monitor_connections_title),
         outerPadding = padding,
         actions = {
-            if (!showRules) {
+            if (showDns) {
+                DnsFilterMenu(
+                    filters = dnsFilters,
+                    onFilterChange = { filter ->
+                        dnsFilters = if (filter in dnsFilters) dnsFilters - filter else dnsFilters + filter
+                    },
+                    onClear = { dnsFilters = emptySet() },
+                )
+            } else if (!showRules) {
                 Box {
                     IconButton(
                         onClick = { showMenu = true },
@@ -274,13 +320,17 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
         },
         toolbar = {
             AsteriskTopBarControls(
-                modifier = if (showRules) Modifier.pageReadableWidth(RulesMonitorPageMaxWidth) else Modifier,
+                modifier = when {
+                    showRules -> Modifier.pageReadableWidth(RulesMonitorPageMaxWidth)
+                    showDns -> Modifier.pageReadableWidth(DnsMonitorPageMaxWidth)
+                    else -> Modifier
+                },
             ) {
                 ConnectionControls(
                     route = route,
                     onRouteChange = { next ->
                         route = next
-                        if (next == ConnectionRouteFilter.Rules) {
+                        if (next.replacesConnections) {
                             showMenu = false
                             showCloseAllConfirmation = false
                         }
@@ -297,6 +347,18 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
                 filteredRules = filteredRules,
                 searching = rulesQuery.isNotBlank(),
                 listState = rulesListState,
+                contentPadding = contentPadding,
+            )
+            return@MonitoringScaffold
+        }
+        if (showDns) {
+            DnsMonitorContent(
+                status = dnsState.status,
+                records = dnsState.records,
+                filteredRecords = filteredDnsRecords,
+                error = dnsState.error,
+                searching = dnsQuery.isNotBlank(),
+                listState = dnsListState,
                 contentPadding = contentPadding,
             )
             return@MonitoringScaffold
@@ -426,7 +488,7 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
         }
     }
 
-    if (!showRules && showCloseAllConfirmation) {
+    if (!route.replacesConnections && showCloseAllConfirmation) {
         AlertDialog(
             onDismissRequest = { showCloseAllConfirmation = false },
             title = { Text(stringResource(R.string.monitor_connections_close_all)) },
@@ -547,6 +609,56 @@ private fun ConnectionsMonitorStatus(
     )
 }
 
+/**
+ * The DNS filter menu.
+ *
+ * The menu lists the record types and the answer sources, which mirrors the groups the
+ * DNS panel of the reference screenshots shows.
+ */
+@Composable
+private fun DnsFilterMenu(
+    filters: Set<DnsRecordFilter>,
+    onFilterChange: (DnsRecordFilter) -> Unit,
+    onClear: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        AsteriskFilterChip(
+            selected = filters.isNotEmpty(),
+            onClick = { expanded = true },
+            label = stringResource(R.string.monitor_dns_filter),
+            leadingIcon = { Icon(Icons.Rounded.FilterAlt, contentDescription = null) },
+            trailingIcon = {
+                AsteriskDropdownAnchor(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    DnsRecordFilter.entries.forEach { option ->
+                        AsteriskDropdownMenuItem(
+                            text = dnsFilterLabel(option),
+                            selected = option in filters,
+                            onClick = {
+                                onFilterChange(option)
+                                expanded = false
+                            },
+                        )
+                    }
+                    if (filters.isNotEmpty()) {
+                        AsteriskDropdownMenuItem(
+                            text = stringResource(R.string.monitor_dns_filter_clear),
+                            selected = false,
+                            onClick = {
+                                onClear()
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            },
+        )
+    }
+}
+
 @Composable
 private fun ConnectionControls(
     route: ConnectionRouteFilter,
@@ -567,7 +679,7 @@ private fun ConnectionControls(
                 label = connectionRouteLabel(option),
             )
         }
-        if (route != ConnectionRouteFilter.Rules) {
+        if (!route.replacesConnections) {
             Box {
                 AsteriskFilterChip(
                     selected = false,
@@ -845,6 +957,7 @@ private fun connectionRouteLabel(route: ConnectionRouteFilter): String = stringR
         ConnectionRouteFilter.Proxy -> R.string.monitor_filter_proxy
         ConnectionRouteFilter.Direct -> R.string.monitor_filter_direct
         ConnectionRouteFilter.Rules -> R.string.monitor_filter_rules
+        ConnectionRouteFilter.Dns -> R.string.monitor_filter_dns
     },
 )
 
