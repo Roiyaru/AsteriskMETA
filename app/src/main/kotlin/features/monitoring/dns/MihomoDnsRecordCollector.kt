@@ -10,7 +10,6 @@ import engine.mihomo.runtime.MihomoDnsLogParser
 import engine.mihomo.runtime.MihomoDnsRecord
 import features.logs.AndroidAppLogger
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -18,7 +17,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicLong
 
@@ -47,16 +45,22 @@ internal class MihomoDnsRecordCollector(
      * ending the collection.
      */
     suspend fun collect(control: MihomoControlConfig, routeResolver: MihomoDnsRouteResolver) {
-        restorePreviousRecords()
         while (currentCoroutineContext().isActive) {
             try {
                 // The parser keeps the pending lookups, so a request and its answer can
                 // arrive in different log lines.
-                val parser = MihomoDnsLogParser()
+                val parser = MihomoDnsLogParser(selfPackage = context.packageName)
+                parserOfSession = parser
                 controlClient.streamLogs(control, DnsLogLevel).collect { record ->
                     val parsed = parser.parse(record.message)
-                    if (parsed.isEmpty()) return@collect
-                    publish(parsed.map { it.copy(route = routeResolver.resolve(it.upstream)) })
+                    if (parsed.isNotEmpty()) {
+                        publish(parsed.map { it.copy(route = routeResolver.resolve(it.upstream)) })
+                    } else if (parser.hasUnreadApps) {
+                        // The core names the app of a connection a moment after the lookup
+                        // it needed, so the records read their app as the notices arrive.
+                        val enriched = parser.enrichApps(mutableRecords.value)
+                        if (enriched !== mutableRecords.value) mutableRecords.value = enriched
+                    }
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
@@ -69,31 +73,27 @@ internal class MihomoDnsRecordCollector(
         }
     }
 
-    /** Clears the collected records and the persisted store behind them. */
+    /** Clears the collected records, so every session starts from an empty list. */
     fun clear() {
         mutableRecords.value = emptyList()
-        MihomoDnsRecordStore.clear(context)
-    }
-
-    /** Reads back the records the service process persisted during an earlier session. */
-    private suspend fun restorePreviousRecords() {
-        val restored = withContext(Dispatchers.IO) { MihomoDnsRecordStore.read(context) }
-        if (restored.isEmpty()) return
-        // The restored records come back without ids, so they get fresh ones from the
-        // same counter as the records that follow. The list then keys every record by
-        // an id that is unique for the whole session.
-        mutableRecords.value = restored.map { it.copy(id = idCounter.getAndIncrement()) }
     }
 
     private fun publish(records: List<MihomoDnsRecord>) {
         // The core answers the same lookup through several upstreams at once, so the
         // records from one burst can share a timestamp, a name and a type. The list
         // keys its rows by the id, so every record gets one before it is shown.
-        val identified = records.map { it.copy(id = idCounter.getAndIncrement()) }
+        val identified = records.map {
+            it.copy(
+                id = idCounter.getAndIncrement(),
+                app = it.app.ifEmpty { parserOfSession?.appFor(it).orEmpty() },
+            )
+        }
         val merged = (mutableRecords.value + identified).takeLast(MaxRecords)
         mutableRecords.value = merged
-        MihomoDnsRecordStore.append(context, identified)
     }
+
+    /** The parser of the running session, which holds the app notices. */
+    private var parserOfSession: MihomoDnsLogParser? = null
 
     private companion object {
         const val LogTag = "MihomoDnsRecordCollector"

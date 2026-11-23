@@ -199,8 +199,8 @@
     <string name="monitor_dns_detail_basic">Basic information</string>
     <string name="monitor_dns_detail_time">Time</string>
     <string name="monitor_dns_detail_domain">Domain</string>
-    <string name="monitor_dns_detail_type">Record type</string>
-    <string name="monitor_dns_detail_initiator">Initiator</string>
+    <string name="monitor_dns_detail_type">Query type</string>
+    <string name="monitor_dns_detail_initiator">Mode</string>
     <string name="monitor_dns_detail_source">Source</string>
     <string name="monitor_dns_detail_cached">Cached</string>
     <string name="monitor_dns_detail_rcode">Response code</string>

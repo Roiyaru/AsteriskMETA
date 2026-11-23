@@ -244,8 +244,15 @@ internal class MonitoringRepository(
                 } else {
                     ConnectionMonitorStatus.Loading
                 }
-                mutableState.update { it.copy(dns = MonitoringDnsSummary(status = status)) }
-                if (session == null) return@collectLatest
+                mutableState.update { current ->
+                    current.copy(dns = MonitoringDnsSummary(status = status))
+                }
+                if (session == null) {
+                    // Every session records its own lookups, so stopping the proxy
+                    // wipes the list right away.
+                    dnsRecordCollector.clear()
+                    return@collectLatest
+                }
                 val control = mihomoRuntime.resolveDnsControlConfig(stateStore.state.value).getOrElse { error ->
                     mutableState.update { current ->
                         current.copy(

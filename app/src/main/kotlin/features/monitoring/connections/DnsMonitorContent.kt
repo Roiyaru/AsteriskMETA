@@ -294,8 +294,7 @@ private fun DnsDetailContent(
         )
         DnsDetailRow(
             label = stringResource(R.string.monitor_dns_detail_source),
-            value = if (record.upstream.isBlank()) DnsDetailUnavailable
-            else dnsUpstreamDisplay(record.upstream),
+            value = record.app.ifBlank { DnsDetailUnavailable },
         )
         DnsDetailRow(
             label = stringResource(R.string.monitor_dns_detail_cached),

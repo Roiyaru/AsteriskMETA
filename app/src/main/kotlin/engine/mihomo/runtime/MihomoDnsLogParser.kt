@@ -23,7 +23,7 @@ internal data class MihomoDnsRecord(
     val addresses: List<String> = emptyList(),
     /** The upstream server the core asked, for example `https://dns.google/dns-query`. */
     val upstream: String = "",
-    /** Whether the upstream was reached through the proxy or directly. */
+    /** The route the core took to reach the upstream. */
     val route: MihomoDnsRoute = MihomoDnsRoute.Unknown,
     /** How long the core waited for the upstream answer. */
     val elapsedMillis: Long? = null,
@@ -31,6 +31,8 @@ internal data class MihomoDnsRecord(
     val cached: Boolean = false,
     /** Whether the lookup was rejected, for example with `NXDOMAIN`. */
     val failed: Boolean = false,
+    /** The app the query was made for, empty when the app is not known yet. */
+    val app: String = "",
 )
 
 /** How the core reached the upstream server. */
@@ -55,8 +57,18 @@ internal enum class MihomoDnsRoute {
  * The parser keeps the pending lookups, so a request and the answer that follows it
  * can arrive in different lines.
  */
-internal class MihomoDnsLogParser {
+internal class MihomoDnsLogParser(
+    /** The package of this app, whose own lookups read as the app itself. */
+    private val selfPackage: String? = null,
+) {
     private val pending = LinkedHashMap<String, PendingLookup>()
+
+    /** The app each host belongs to, learned from the core's process notices. */
+    private val appByHost = LinkedHashMap<String, String>()
+
+    /** Whether a process notice arrived since the records were enriched last. */
+    var hasUnreadApps = false
+        private set
 
     /**
      * Extracts the DNS records from one core log line.
@@ -64,6 +76,11 @@ internal class MihomoDnsLogParser {
      * The lines that carry no record, such as the hijack notices, produce no output.
      */
     fun parse(line: String, nowMillis: Long = System.currentTimeMillis()): List<MihomoDnsRecord> {
+        val trimmed = line.trim()
+        if (trimmed.startsWith(PkgLogPrefix)) {
+            parsePkg(trimmed)
+            return emptyList()
+        }
         return when (val parsed = parseLine(line, nowMillis)) {
             is ParsedLine.Resolve -> {
                 pending[parsed.key] = parsed.lookup
@@ -80,6 +97,56 @@ internal class MihomoDnsLogParser {
             }
             null -> emptyList()
         }
+    }
+
+    /**
+     * Fills in the app of the records the process notices have since revealed.
+     *
+     * A connection usually starts after the lookup it needed, so the notices name the
+     * app a moment later than the record.
+     */
+    fun enrichApps(records: List<MihomoDnsRecord>): List<MihomoDnsRecord> {
+        if (!hasUnreadApps) return records
+        val enriched = records.map { record ->
+            if (record.app.isEmpty()) record.copy(app = appFor(record)) else record
+        }
+        hasUnreadApps = false
+        return enriched
+    }
+
+    /** The app the lookup was made for, from the domain or the resolved addresses. */
+    internal fun appFor(record: MihomoDnsRecord): String {
+        appByHost[record.domain]?.let { name -> return name }
+        record.addresses.firstNotNullOfOrNull { address -> appByHost[address] }?.let { name -> return name }
+        return ""
+    }
+
+    /**
+     * Remembers the app a connection belongs to.
+     *
+     * The core names the connection destination, which is the domain the lookup asked
+     * for or one of the addresses it answered with.
+     */
+    private fun parsePkg(line: String) {
+        val body = line.removePrefix(PkgLogPrefix).trim()
+        val arrowIndex = body.indexOf(" --> ")
+        if (arrowIndex <= 0) return
+        val rest = body.substring(arrowIndex + 5).trim()
+        val byIndex = rest.lastIndexOf(" by ")
+        if (byIndex <= 0) return
+        val host = hostWithoutPort(rest.substring(0, byIndex).trim())
+        val app = rest.substring(byIndex + 4).trim()
+            .substringAfter('[', missingDelimiterValue = "")
+            .substringBefore(']')
+            .trim()
+        if (host.isEmpty() || app.isEmpty()) return
+        val name = if (app == selfPackage) SelfAppName else app
+        if (appByHost.put(host, name) == null) hasUnreadApps = true
+    }
+
+    private fun hostWithoutPort(host: String): String = when {
+        host.startsWith("[") -> host.substringBefore(']')
+        else -> host.substringBeforeLast(':', missingDelimiterValue = host)
     }
 
     private fun parseLine(line: String, nowMillis: Long): ParsedLine? {
@@ -208,6 +275,12 @@ internal class MihomoDnsLogParser {
 
     private companion object {
         const val DnsLogPrefix = "[DNS] "
+
+        /** The core prefixes a process notice with this marker. */
+        const val PkgLogPrefix = "[PKG] "
+
+        /** The name the app itself reads as. */
+        const val SelfAppName = "AsteriskMETA"
 
         /** The upstream part of a line, such as `https://dns.google/dns-query`. */
         const val FromMarker = " from "
