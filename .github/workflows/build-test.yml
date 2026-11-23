@@ -230,16 +230,40 @@ jobs:
             echo "### 本次变更"
             echo ""
             if [ -n "$previous_sha" ] && git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
-              # A commit that only touches the workflow or the notes changes nothing in
-              # the app, so it does not belong in the summary.
-              git log --no-merges --pretty=format:'%s' "${previous_sha}..${GITHUB_SHA}" -- app asteriskd buildSrc \
-                | sed 's/^/- /' || true
-              echo ""
-              other="$(git log --no-merges --pretty=format:'%s' "${previous_sha}..${GITHUB_SHA}" -- .github PROGRESS.md 2>/dev/null | head -n 5 || true)"
-              if [ -n "$other" ]; then
+              # A commit that changes the application is listed on its own, and a commit
+              # that only touches the build or the notes is listed apart from it.
+              app_list=""
+              other_list=""
+              while IFS= read -r sha; do
+                [ -z "$sha" ] && continue
+                subject="$(git log -1 --pretty=format:'%s' "$sha")"
+                touches_app=0
+                touches_other=0
+                while IFS= read -r file; do
+                  [ -z "$file" ] && continue
+                  case "$file" in
+                    app/*|asteriskd/*|buildSrc/*) touches_app=1 ;;
+                    *) touches_other=1 ;;
+                  esac
+                done <<< "$(git show --name-only --pretty=format:'' "$sha" | sed '/^$/d')"
+                if [ "$touches_app" -eq 1 ]; then
+                  app_list="${app_list}- ${subject}\n"
+                elif [ "$touches_other" -eq 1 ]; then
+                  other_list="${other_list}- ${subject}\n"
+                fi
+              done < <(git log --no-merges --pretty=format:'%H' "${previous_sha}..${GITHUB_SHA}")
+
+              if [ -n "$app_list" ]; then
+                printf "%b" "$app_list"
                 echo ""
-                echo "其它（非应用代码）："
-                echo "$other" | sed 's/^/- /'
+              fi
+              if [ -n "$other_list" ]; then
+                echo "构建与文档："
+                printf "%b" "$other_list"
+                echo ""
+              fi
+              if [ -z "$app_list" ] && [ -z "$other_list" ]; then
+                echo "- 无代码变更"
                 echo ""
               fi
             else
