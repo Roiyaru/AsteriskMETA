@@ -201,6 +201,58 @@ jobs:
           cp "$debug_apk" signed-apks/AsteriskMETA-debug-arm64-v8a.apk
           ls -l signed-apks
 
+      - name: Generate release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
+        run: |
+          set -uo pipefail
+
+          # The notes describe what this build changed, so they are derived from the
+          # commits between the previous successful build and this one.
+          previous_sha="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/build-test.yml/runs?status=success&per_page=20" \
+            --jq "[.workflow_runs[] | select(.head_sha != \"${GITHUB_SHA}\")][0].head_sha" 2>/dev/null || true)"
+
+          # The checkout is shallow, so the history behind the baseline is not available
+          # until it is fetched.
+          if [ -n "$previous_sha" ] && [ "$previous_sha" != "null" ]; then
+            git fetch --no-tags --depth=200 origin "$previous_sha" 2>/dev/null || true
+          fi
+
+          if [ -z "$previous_sha" ] || [ "$previous_sha" = "null" ] || ! git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
+            previous_sha=""
+          fi
+
+          {
+            echo "AsteriskMETA 测试包（构建于 \`${GITHUB_SHA:0:8}\`）。"
+            echo ""
+            echo "- Release 包名 \`org.asterisk.zcc.ameta.dev\`（与官方包并存，可覆盖历史测试包），测试签名与历史 test-* 一致"
+            echo "- Debug 包名 \`org.asterisk.zcc.ameta.dev.debug\`（可调试，独立签名，可与 Release 包同时安装）"
+            echo "- versionCode \`${VERSION_CODE}\`"
+            echo ""
+            echo "### 本次变更"
+            echo ""
+            if [ -n "$previous_sha" ] && git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
+              git log --no-merges --pretty=format:'- %s (%h)' "${previous_sha}..${GITHUB_SHA}" || true
+              echo ""
+            else
+              echo "- 首次构建"
+              echo ""
+            fi
+            echo ""
+            echo "### 变更涉及的文件"
+            echo ""
+            if [ -n "$previous_sha" ] && git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
+              git diff --stat "${previous_sha}..${GITHUB_SHA}" | tail -n 30
+            else
+              git show --stat --oneline HEAD | tail -n 30
+            fi
+          } > release-notes.md
+
+          echo "--- release notes ---"
+          cat release-notes.md
+
       - name: Publish test release
         uses: softprops/action-gh-release@v2
         with:
@@ -209,17 +261,7 @@ jobs:
           files: signed-apks/*.apk
           fail_on_unmatched_files: true
           prerelease: true
-          body: |
-            AsteriskMETA 测试包：连接监控「规则」模块。
-            - Release 包名 `org.asterisk.zcc.ameta.dev`（与官方包并存，可覆盖历史测试包），测试签名与历史 test-* 一致
-            - Debug 包名 `org.asterisk.zcc.ameta.dev.debug`（可调试，独立签名，可与 Release 包同时安装）
-            - versionCode `${{ steps.version.outputs.version_code }}`
-            - 新增：连接监控「规则」标签（按钮位于「直连」之后）：
-              - 读取当前加载配置的全部规则（核心 /rules API），逐条卡片展示：序号、规则类型、匹配内容、RuleSet 规则条数、命中出站徽章
-              - 命中统计（命中次数、最后命中时间）直接内联显示在规则卡片上，无需点开详情查看
-              - 支持按规则内容/类型/出站搜索，进入页面后每 4 秒自动刷新命中数据
-              - 空状态、加载中、数据过期与服务未启用均有对应提示
-            测试方式：安装 arm64-v8a 包 -> 连接 -> 点按「规则」标签查看规则列表与命中统计。
+          body_path: release-notes.md
 
       - name: Verify release assets
         shell: bash
