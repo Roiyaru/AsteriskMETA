@@ -262,7 +262,10 @@ private fun DnsDetailContent(
     record: MihomoDnsRecord,
     timeStyle: SimpleDateFormat,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         Text(
             text = stringResource(R.string.monitor_dns_detail_basic),
             style = MaterialTheme.typography.titleSmall,

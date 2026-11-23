@@ -9,11 +9,9 @@ import engine.mihomo.runtime.MihomoDnsRoute
 /**
  * The filters the DNS monitor offers.
  *
- * The filters fall into two dimensions. The source says how the core reached the
- * upstream: directly or through the proxy. The type says what the core asked for. A
- * record passes when it matches the source filters and the type filters, and the
- * filters within one dimension accept a record that matches any of them. A cached
- * answer is not a source, so the monitor keeps the cache on the record itself.
+ * The menu groups them into the source of the lookup and the type the core asked for,
+ * but one tap picks one filter and replaces the previous pick, so the list is never
+ * narrowed by two filters at once.
  */
 internal enum class DnsRecordFilter {
     /** The core reached the upstream directly. */
@@ -45,42 +43,16 @@ internal val DnsTypeFilter: List<DnsRecordFilter> = listOf(
     DnsRecordFilter.Https,
 )
 
-/** The filters that say how the core reached the upstream. */
-internal val DnsRecordFilter.isSource: Boolean
-    get() = this == DnsRecordFilter.Direct || this == DnsRecordFilter.Proxy
-
-/** Whether the record passes the selected filters. */
-internal fun MihomoDnsRecord.matchesDnsFilters(filters: Set<DnsRecordFilter>): Boolean {
-    if (filters.isEmpty()) return true
-    // The dimensions narrow the list together, so a record has to pass both of them.
-    return matchesDnsSourceFilters(filters) && matchesDnsTypeFilters(filters)
-}
-
-private fun MihomoDnsRecord.matchesDnsSourceFilters(filters: Set<DnsRecordFilter>): Boolean {
-    val sources = filters.filter { it.isSource }
-    if (sources.isEmpty()) return true
-    return sources.any { filter ->
-        when (filter) {
-            DnsRecordFilter.Direct -> route == MihomoDnsRoute.Direct
-            DnsRecordFilter.Proxy -> route == MihomoDnsRoute.Proxy
-            else -> false
-        }
-    }
-}
-
-private fun MihomoDnsRecord.matchesDnsTypeFilters(filters: Set<DnsRecordFilter>): Boolean {
-    val types = filters.filterNot { it.isSource }
-    if (types.isEmpty()) return true
-    return types.any { filter ->
-        when (filter) {
-            DnsRecordFilter.A -> recordType.equals("A", ignoreCase = true)
-            DnsRecordFilter.AAAA -> recordType.equals("AAAA", ignoreCase = true)
-            // The core reports the service binding type under either name.
-            DnsRecordFilter.Https -> recordType.equals("HTTPS", ignoreCase = true) ||
-                recordType.equals("SVCB", ignoreCase = true)
-            else -> false
-        }
-    }
+/** Whether the record passes the picked filter, with no filter meaning every record. */
+internal fun MihomoDnsRecord.matchesDnsFilter(filter: DnsRecordFilter?): Boolean = when (filter) {
+    null -> true
+    DnsRecordFilter.Direct -> route == MihomoDnsRoute.Direct
+    DnsRecordFilter.Proxy -> route == MihomoDnsRoute.Proxy
+    DnsRecordFilter.A -> recordType.equals("A", ignoreCase = true)
+    DnsRecordFilter.AAAA -> recordType.equals("AAAA", ignoreCase = true)
+    // The core reports the service binding type under either name.
+    DnsRecordFilter.Https -> recordType.equals("HTTPS", ignoreCase = true) ||
+        recordType.equals("SVCB", ignoreCase = true)
 }
 
 /** Whether the record matches the search term. */
@@ -93,11 +65,11 @@ internal fun MihomoDnsRecord.matchesDnsQuery(query: String): Boolean {
         addresses.any { it.contains(term, ignoreCase = true) }
 }
 
-/** Filters the records by the selected filters and the search term. */
+/** Filters the records by the picked filter and the search term. */
 internal fun filterDnsRecords(
     records: List<MihomoDnsRecord>,
-    filters: Set<DnsRecordFilter>,
+    filter: DnsRecordFilter?,
     query: String,
 ): List<MihomoDnsRecord> = records.filter { record ->
-    record.matchesDnsFilters(filters) && record.matchesDnsQuery(query)
+    record.matchesDnsFilter(filter) && record.matchesDnsQuery(query)
 }

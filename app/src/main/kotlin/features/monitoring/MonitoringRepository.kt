@@ -8,6 +8,8 @@ import android.os.SystemClock
 import app.modes.RunModeVpnService
 import app.modes.isRootRunMode
 import data.AndroidAppStateStore
+import engine.mihomo.MihomoProfileFactory
+import engine.mihomo.loadMihomoProfileObject
 import engine.mihomo.raw.loadSelectedRawConfig
 import engine.mihomo.raw.usesRawMihomoConfig
 import engine.mihomo.runtime.MihomoConnection
@@ -200,6 +202,36 @@ internal class MonitoringRepository(
      * The core reports every lookup on its debug log stream, so the collector subscribes
      * to that stream instead of polling a query history the controller does not expose.
      */
+    /**
+     * Builds the route resolver from the name servers the core actually received.
+     *
+     * The core may take its DNS section from the profile, from the raw YAML or from
+     * the app settings, so the lists come from the same source the running config was
+     * built from instead of from the app settings alone.
+     */
+    private fun resolveDnsRouteResolver(appState: AppState): MihomoDnsRouteResolver {
+        var proxy = emptyList<String>()
+        var direct = emptyList<String>()
+        runCatching {
+            val yaml = if (appState.usesRawMihomoConfig()) {
+                appContext.loadSelectedRawConfig(appState)?.sourceBytes?.toString(Charsets.UTF_8)
+            } else {
+                MihomoProfileFactory.buildProfile(appContext, appState)
+            }
+            val dns = yaml?.loadMihomoProfileObject()?.get("dns") as? Map<*, *>
+            if (dns != null) {
+                proxy = dns.stringList("proxy-server-nameserver")
+                direct = dns.stringList("nameserver") + dns.stringList("fallback") +
+                    dns.stringList("default-nameserver")
+            }
+        }
+        if (proxy.isEmpty() && direct.isEmpty()) {
+            proxy = appState.dnsProxyServerNameserver
+            direct = appState.dnsNameserver + appState.dnsFallback + appState.dnsDefaultNameserver
+        }
+        return MihomoDnsRouteResolver(proxy, direct)
+    }
+
     private suspend fun collectDnsRecords() {
         val running = stateStore.state.map { it.proxyRunning }.distinctUntilChanged()
         val epoch = mihomoRuntime.state.map { it.runtimeEpoch }.distinctUntilChanged()
@@ -225,13 +257,7 @@ internal class MonitoringRepository(
                     return@collectLatest
                 }
                 val appState = stateStore.state.value
-                val routeResolver = MihomoDnsRouteResolver(
-                    proxyNameservers = appState.dnsProxyServerNameserver,
-                    // The bootstrap server that resolves the encrypted upstreams itself
-                    // never goes through the proxy, so it counts as direct too.
-                    directNameservers = appState.dnsNameserver +
-                        appState.dnsFallback + appState.dnsDefaultNameserver,
-                )
+                val routeResolver = resolveDnsRouteResolver(appState)
                 coroutineScope {
                     launch {
                         dnsRecordCollector.records.collect { records ->
@@ -729,3 +755,9 @@ private fun List<MihomoConnection>.sumKnownRates(selector: (MihomoConnection) ->
 
 private const val MemoryMonitoringIntervalMillis = 3_000L
 private const val LogTag = "MonitoringRepository"
+
+private fun Map<*, *>.stringList(key: String): List<String> = when (val value = get(key)) {
+    is List<*> -> value.mapNotNull { item -> item?.toString() }.filter(String::isNotBlank)
+    is String -> listOf(value)
+    else -> emptyList()
+}

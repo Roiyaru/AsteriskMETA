@@ -126,10 +126,11 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
     var query by rememberSaveable { mutableStateOf("") }
     var rulesQuery by rememberSaveable { mutableStateOf("") }
     var dnsQuery by rememberSaveable { mutableStateOf("") }
-    // A set of enums cannot go into a bundle, so the filters stay in memory.
-    var dnsFilters by remember { mutableStateOf(emptySet<DnsRecordFilter>()) }
+    // A set of enums cannot go into a bundle, so the filter stays in memory. The menu
+    // picks one filter at a time, and picking another replaces the previous one.
+    var dnsFilter by remember { mutableStateOf<DnsRecordFilter?>(null) }
 
-    // The upstream block the user tapped in the DNS summary card. It narrows the
+    // The upstream block the user tapped on a DNS record card. It narrows the
     // record list to the lookups that went through that server.
     var selectedDnsUpstream by remember { mutableStateOf<String?>(null) }
     var route by rememberSaveable { mutableStateOf(ConnectionRouteFilter.App) }
@@ -226,8 +227,8 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
             MonitoringDnsSummary(status = ConnectionMonitorStatus.Loading)
         else -> monitoring.dns
     }
-    val filteredDnsRecords = remember(dnsState.records, dnsFilters, dnsQuery) {
-        filterDnsRecords(dnsState.records, dnsFilters, dnsQuery)
+    val filteredDnsRecords = remember(dnsState.records, dnsFilter, dnsQuery) {
+        filterDnsRecords(dnsState.records, dnsFilter, dnsQuery)
     }
 
     fun closeConnection(connection: MihomoConnection) {
@@ -297,11 +298,11 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
         actions = {
             if (showDns) {
                 DnsFilterMenu(
-                    filters = dnsFilters,
+                    filter = dnsFilter,
                     onFilterChange = { filter ->
-                        dnsFilters = if (filter in dnsFilters) dnsFilters - filter else dnsFilters + filter
+                        dnsFilter = if (dnsFilter == filter) null else filter
                     },
-                    onClear = { dnsFilters = emptySet() },
+                    onClear = { dnsFilter = null },
                 )
             } else if (!showRules) {
                 Box {
@@ -621,18 +622,19 @@ private fun ConnectionsMonitorStatus(
  * The DNS filter menu.
  *
  * The menu lists the record types and the answer sources, which mirrors the groups the
- * DNS panel of the reference screenshots shows.
+ * DNS panel of the reference screenshots shows. It picks one filter at a time: picking
+ * an entry replaces the previous pick, and picking it again clears the filter.
  */
 @Composable
 private fun DnsFilterMenu(
-    filters: Set<DnsRecordFilter>,
+    filter: DnsRecordFilter?,
     onFilterChange: (DnsRecordFilter) -> Unit,
     onClear: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         AsteriskFilterChip(
-            selected = filters.isNotEmpty(),
+            selected = filter != null,
             onClick = { expanded = true },
             label = stringResource(R.string.monitor_dns_filter),
             leadingIcon = { Icon(Icons.Rounded.FilterAlt, contentDescription = null) },
@@ -647,7 +649,7 @@ private fun DnsFilterMenu(
                     DnsSourceFilter.forEach { option ->
                         AsteriskDropdownMenuItem(
                             text = dnsFilterLabel(option),
-                            selected = option in filters,
+                            selected = option == filter,
                             onClick = {
                                 onFilterChange(option)
                                 expanded = false
@@ -658,14 +660,14 @@ private fun DnsFilterMenu(
                     DnsTypeFilter.forEach { option ->
                         AsteriskDropdownMenuItem(
                             text = dnsFilterLabel(option),
-                            selected = option in filters,
+                            selected = option == filter,
                             onClick = {
                                 onFilterChange(option)
                                 expanded = false
                             },
                         )
                     }
-                    if (filters.isNotEmpty()) {
+                    if (filter != null) {
                         AsteriskDropdownMenuItem(
                             text = stringResource(R.string.monitor_dns_filter_clear),
                             selected = false,

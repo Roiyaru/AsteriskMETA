@@ -23,6 +23,9 @@ internal class MihomoDnsRouteResolver(
     /** Classifies the upstream the core named in its log. */
     fun resolve(upstream: String): MihomoDnsRoute {
         if (upstream.isBlank()) return MihomoDnsRoute.Unknown
+        // A name server that names a proxy adapter in its fragment goes through it,
+        // whichever list it came from.
+        if (upstreamNamesProxyAdapter(upstream)) return MihomoDnsRoute.Proxy
         val key = upstreamKey(upstream)
         return when {
             key in proxyKeys -> MihomoDnsRoute.Proxy
@@ -30,6 +33,18 @@ internal class MihomoDnsRouteResolver(
             else -> MihomoDnsRoute.Unknown
         }
     }
+}
+
+/**
+ * Tells whether the address names a proxy adapter in its fragment.
+ *
+ * The fragment carries the adapter name as a bare token, such as `#PROXY` or
+ * `#PROXY&h3=true`, while the rest of the tokens come as pairs.
+ */
+private fun upstreamNamesProxyAdapter(upstream: String): Boolean {
+    val fragment = upstream.substringAfter('#', missingDelimiterValue = "")
+    if (fragment.isEmpty()) return false
+    return fragment.split('&').any { token -> token.isNotEmpty() && '=' !in token }
 }
 
 /**
