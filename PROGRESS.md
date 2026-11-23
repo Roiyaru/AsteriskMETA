@@ -31,6 +31,8 @@
 - CI 失败日志读取方式：工作流 `Upload build logs on failure` 会把 `build.log` 发到 release `ci-logs` 标签，地址 `https://github.com/Roiyaru/AsteriskMETA/releases/download/ci-logs/build.log`。直接 curl 会被墙，**用 WebFetch 读取**。
 - GitHub REST API 匿名调用有速率限制；查询构建状态可改用 WebFetch 打开 Actions 页面。
 - shell 脚本里遍历提交列表要用 `git rev-list`（每行有换行），**不要用 `git log --pretty=format:'%H'`**（末行无换行，`while read` 读不到，导致列表为空）。
+- `List<T>` 没有 `entries` 属性（那是枚举类的），遍历要用 `forEach`；跨文件引用顶层 `val` 需补 import。
+- CI 失败日志若上传到固定 tag 的 release，资产不会覆盖，拿到的是旧日志；改用 `$GITHUB_STEP_SUMMARY` 写 job summary（随 run 走，不外发）。
 - `release.yml`（Build Release APKs）历史上一直失败，原因是 `Validate signing secrets` 缺密钥，与代码无关；验证请用 `build-test.yml`。
 
 ### 下一步（若需继续）

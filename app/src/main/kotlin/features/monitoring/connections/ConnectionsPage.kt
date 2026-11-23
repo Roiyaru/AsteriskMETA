@@ -88,6 +88,8 @@ import features.monitoring.buildMonitoringConnectionsFocusState
 import features.monitoring.clearDisplayedConnections
 import features.monitoring.discardDisplayedConnection
 import features.monitoring.dns.DnsRecordFilter
+import features.monitoring.dns.DnsSourceFilter
+import features.monitoring.dns.DnsTypeFilter
 import features.monitoring.dns.filterDnsRecords
 import features.monitoring.reduceConnections
 import features.monitoring.replacesConnections
@@ -636,7 +638,7 @@ private fun DnsFilterMenu(
                     // The sources come first and the queried types follow, so the two
                     // dimensions stay apart instead of mixing in the menu.
                     DnsFilterGroupHeader(stringResource(R.string.monitor_dns_filter_sources))
-                    DnsSourceFilter.entries.forEach { option ->
+                    DnsSourceFilter.forEach { option ->
                         AsteriskDropdownMenuItem(
                             text = dnsFilterLabel(option),
                             selected = option in filters,
@@ -647,7 +649,7 @@ private fun DnsFilterMenu(
                         )
                     }
                     DnsFilterGroupHeader(stringResource(R.string.monitor_dns_filter_types))
-                    DnsTypeFilter.entries.forEach { option ->
+                    DnsTypeFilter.forEach { option ->
                         AsteriskDropdownMenuItem(
                             text = dnsFilterLabel(option),
                             selected = option in filters,
