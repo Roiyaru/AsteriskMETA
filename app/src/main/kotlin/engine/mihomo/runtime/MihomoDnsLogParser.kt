@@ -59,7 +59,9 @@ internal class MihomoDnsLogParser {
                     parsed.answer.copy(
                         domain = lookup?.domain ?: parsed.answer.domain,
                         elapsedMillis = lookup?.let { parsed.answer.timestampMillis - it.timestampMillis },
-                        cached = lookup == null,
+                        // A cache hit never reaches an upstream, so it carries its own mark.
+                        // Otherwise the answer came from the core's cache.
+                        cached = parsed.answer.cached || lookup == null,
                     ),
                 )
             }
