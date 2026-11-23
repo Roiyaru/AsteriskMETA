@@ -302,7 +302,6 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
                     onFilterChange = { filter ->
                         dnsFilter = if (dnsFilter == filter) null else filter
                     },
-                    onClear = { dnsFilter = null },
                 )
             } else if (!showRules) {
                 Box {
@@ -629,7 +628,6 @@ private fun ConnectionsMonitorStatus(
 private fun DnsFilterMenu(
     filter: DnsRecordFilter?,
     onFilterChange: (DnsRecordFilter) -> Unit,
-    onClear: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -663,16 +661,6 @@ private fun DnsFilterMenu(
                             selected = option == filter,
                             onClick = {
                                 onFilterChange(option)
-                                expanded = false
-                            },
-                        )
-                    }
-                    if (filter != null) {
-                        AsteriskDropdownMenuItem(
-                            text = stringResource(R.string.monitor_dns_filter_clear),
-                            selected = false,
-                            onClick = {
-                                onClear()
                                 expanded = false
                             },
                         )

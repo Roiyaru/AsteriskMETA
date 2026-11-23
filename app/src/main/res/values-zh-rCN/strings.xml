@@ -179,6 +179,7 @@
     <string name="monitor_rules_total">规则数量</string>
 
     <!-- Monitoring - DNS -->
+    <string name="monitor_dns_system">系统 DNS</string>
     <string name="monitor_dns_cached">缓存</string>
     <string name="monitor_dns_empty">暂无 DNS 请求</string>
     <string name="monitor_dns_elapsed">%1$d 毫秒</string>

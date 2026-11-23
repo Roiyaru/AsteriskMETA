@@ -26,6 +26,9 @@ internal class MihomoDnsRouteResolver(
         // A name server that names a proxy adapter in its fragment goes through it,
         // whichever list it came from.
         if (upstreamNamesProxyAdapter(upstream)) return MihomoDnsRoute.Proxy
+        // The system resolver asks the local network's own servers, which never go
+        // through the proxy.
+        if (upstream.startsWith(SystemDnsMarker)) return MihomoDnsRoute.Direct
         val key = upstreamKey(upstream)
         return when {
             key in proxyKeys -> MihomoDnsRoute.Proxy
@@ -47,6 +50,9 @@ private fun upstreamNamesProxyAdapter(upstream: String): Boolean {
     return fragment.split('&').any { token -> token.isNotEmpty() && '=' !in token }
 }
 
+/** The marker the core puts in front of the system resolver's expanded servers. */
+internal const val SystemDnsMarker = "system("
+
 /**
  * Reduces an upstream address to a comparable key.
  *
@@ -58,6 +64,9 @@ private fun upstreamNamesProxyAdapter(upstream: String): Boolean {
  */
 internal fun upstreamKey(value: String): String {
     var rest = value.substringBefore('#').trim()
+    // The system resolver logs every system server it asked inside the parentheses,
+    // and all of it is one resolver.
+    if (rest.startsWith(SystemDnsMarker)) return "system"
     val schemeSeparator = rest.indexOf("://")
     if (schemeSeparator >= 0) {
         rest = rest.substring(schemeSeparator + 3)

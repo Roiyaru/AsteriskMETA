@@ -39,6 +39,7 @@ import engine.mihomo.runtime.MihomoDnsRecord
 import engine.mihomo.runtime.MihomoDnsRoute
 import features.monitoring.ConnectionMonitorStatus
 import features.monitoring.dns.DnsRecordFilter
+import features.monitoring.dns.SystemDnsMarker
 import ui.components.AsteriskCancelButton
 import ui.components.AsteriskChipTone
 import ui.components.AsteriskExpressiveCard
@@ -234,7 +235,7 @@ private fun ActiveUpstreamFilter(
         AsteriskFilterChip(
             selected = true,
             onClick = onClear,
-            label = "${upstreamLabel(upstream)} · $count",
+            label = "${dnsUpstreamDisplay(upstream)} · $count",
             trailingIcon = {
                 Icon(
                     Icons.Rounded.Clear,
@@ -246,15 +247,15 @@ private fun ActiveUpstreamFilter(
 }
 
 /**
- * The short name of an upstream, for the blocks and the filter chip.
+ * The upstream as the card shows it.
  *
- * The full address stays in the record cards, because it is what the core asked.
+ * The system resolver logs every system server it asked inside its marker, which is
+ * noise on a card, so it reads as the system resolver instead.
  */
-internal fun upstreamLabel(upstream: String): String = when {
-    upstream.contains("://") -> upstream.substringAfter("://").substringBefore('/')
-    upstream.indexOf('/') in 0 until upstream.length - 1 -> upstream.substringAfter('/')
-    else -> upstream
-}
+@Composable
+internal fun dnsUpstreamDisplay(upstream: String): String =
+    if (upstream.startsWith(SystemDnsMarker)) stringResource(R.string.monitor_dns_system)
+    else upstream
 
 /** The detail sheet of one DNS lookup, which mirrors the reference screenshots. */
 @Composable
@@ -293,7 +294,8 @@ private fun DnsDetailContent(
         )
         DnsDetailRow(
             label = stringResource(R.string.monitor_dns_detail_source),
-            value = record.upstream.ifBlank { DnsDetailUnavailable },
+            value = if (record.upstream.isBlank()) DnsDetailUnavailable
+            else dnsUpstreamDisplay(record.upstream),
         )
         DnsDetailRow(
             label = stringResource(R.string.monitor_dns_detail_cached),
@@ -445,7 +447,7 @@ private fun DnsRecordCard(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    text = record.upstream,
+                                    text = dnsUpstreamDisplay(record.upstream),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,

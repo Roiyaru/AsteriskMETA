@@ -185,6 +185,7 @@
     <string name="monitor_rules_total">Total rules</string>
 
     <!-- Monitoring - DNS -->
+    <string name="monitor_dns_system">System DNS</string>
     <string name="monitor_dns_cached">Cached</string>
     <string name="monitor_dns_empty">No DNS lookups</string>
     <string name="monitor_dns_elapsed">%1$d ms</string>
