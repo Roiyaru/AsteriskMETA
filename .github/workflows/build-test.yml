@@ -22,6 +22,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # The version code follows the upstream rule of counting the commits, so the
+          # build needs the whole history.
+          fetch-depth: 0
           # Native submodules are required by the release build. This repository's tree
           # is the patched base, so no upstream clone is needed.
           submodules: recursive
@@ -62,12 +65,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The previous test builds shipped versionCode 500 and this fork keeps a
-          # squashed history, so derive a monotonic value from the run number.
-          version_code="$((500 + GITHUB_RUN_NUMBER))"
+          # The upstream derives its versionCode from its commit count, so the test
+          # build follows the same rule. This fork merged the upstream history, so
+          # the count already includes the upstream commits and stays above every
+          # upstream build.
+          version_code="$(git rev-list --count HEAD)"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           echo "VERSION_CODE=$version_code" >> "$GITHUB_ENV"
-          echo "Using versionCode=$version_code"
+          echo "versionCode=$version_code"
 
       - name: Set up JDK
         uses: actions/setup-java@v6

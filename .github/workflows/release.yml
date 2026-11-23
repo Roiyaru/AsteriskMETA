@@ -181,7 +181,8 @@ jobs:
           fi
 
       - name: Build release APKs
-        run: ./gradlew --no-daemon :app:assembleRelease -Pcore=${{ matrix.core }}
+        # The source keeps every architecture, but the release only ships arm64-v8a.
+        run: ./gradlew --no-daemon :app:assembleRelease -Pcore=${{ matrix.core }} -PbuildAbis=arm64-v8a -PbuildUniversalApk=false
 
       - name: Sign release APKs
         shell: bash
@@ -276,6 +277,12 @@ jobs:
             exit 1
           fi
 
+          # The build only asks for arm64-v8a, so anything else is a mistake.
+          if find release-artifacts -type f -name "*.apk" | grep -vq "arm64-v8a"; then
+            echo "::error::A release APK of an unexpected architecture was produced."
+            exit 1
+          fi
+
           echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
           ls -lh release-artifacts
@@ -284,34 +291,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           path: release-artifacts/*-arm64-v8a.apk
-          if-no-files-found: error
-          archive: false
-
-      - name: Upload armeabi-v7a APK artifact
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-artifacts/*-armeabi-v7a.apk
-          if-no-files-found: error
-          archive: false
-
-      - name: Upload x86 APK artifact
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-artifacts/*-x86.apk
-          if-no-files-found: error
-          archive: false
-
-      - name: Upload x86_64 APK artifact
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-artifacts/*-x86_64.apk
-          if-no-files-found: error
-          archive: false
-
-      - name: Upload universal APK artifact
-        uses: actions/upload-artifact@v7
-        with:
-          path: release-artifacts/*-universal.apk
           if-no-files-found: error
           archive: false
 

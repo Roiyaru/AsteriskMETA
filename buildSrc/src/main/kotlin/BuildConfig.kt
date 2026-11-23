@@ -28,9 +28,9 @@ object ProjectConfig {
 }
 
 fun org.gradle.api.Project.getGitVersionCode(): Int {
-    // This fork keeps a squashed history, so the commit count no longer reflects the
-    // upstream release order. Prefer an explicit versionCode and keep the count as the
-    // fallback for a full-history checkout.
+    // A build may supply the version code, which the test workflow derives from the
+    // upstream commit count so the fork stays above every upstream build. Without it
+    // the commit count of this checkout is the version code, as upstream does.
     providers.gradleProperty("versionCode").orNull?.let { value -> return value.toInt() }
     return providers.exec {
         commandLine("git", "rev-list", "--count", "HEAD")
