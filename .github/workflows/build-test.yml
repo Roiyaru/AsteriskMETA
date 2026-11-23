@@ -256,7 +256,7 @@ jobs:
                 elif [ "$touches_other" -eq 1 ]; then
                   other_list="${other_list}- ${subject}\n"
                 fi
-              done < <(git log --no-merges --pretty=format:'%H' "${previous_sha}..${GITHUB_SHA}")
+              done < <(git rev-list --no-merges "${previous_sha}..${GITHUB_SHA}")
 
               if [ -n "$app_list" ]; then
                 printf "%b" "$app_list"
