@@ -128,6 +128,10 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
     var dnsQuery by rememberSaveable { mutableStateOf("") }
     // A set of enums cannot go into a bundle, so the filters stay in memory.
     var dnsFilters by remember { mutableStateOf(emptySet<DnsRecordFilter>()) }
+
+    // The upstream block the user tapped in the DNS summary card. It narrows the
+    // record list to the lookups that went through that server.
+    var selectedDnsUpstream by remember { mutableStateOf<String?>(null) }
     var route by rememberSaveable { mutableStateOf(ConnectionRouteFilter.App) }
     val showRules = route == ConnectionRouteFilter.Rules
     val showDns = route == ConnectionRouteFilter.Dns
@@ -360,6 +364,8 @@ internal fun ConnectionsMonitorPage(padding: PaddingValues) {
                 filteredRecords = filteredDnsRecords,
                 error = dnsState.error,
                 searching = dnsQuery.isNotBlank(),
+                selectedUpstream = selectedDnsUpstream,
+                onUpstreamSelect = { next -> selectedDnsUpstream = next },
                 listState = dnsListState,
                 contentPadding = contentPadding,
             )

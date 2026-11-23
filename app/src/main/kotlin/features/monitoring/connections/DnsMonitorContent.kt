@@ -6,6 +6,8 @@ package features.monitoring.connections
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,8 +38,10 @@ import features.monitoring.ConnectionMonitorStatus
 import features.monitoring.dns.DnsRecordFilter
 import ui.components.AsteriskChipTone
 import ui.components.AsteriskExpressiveCard
+import ui.components.AsteriskFilterChip
 import ui.components.AsteriskInfoChip
 import ui.components.AsteriskStatusCard
+import ui.icons.AsteriskIcons as Icons
 import ui.layout.LocalAdaptiveWindow
 import ui.layout.pageListPadding
 import ui.layout.pageReadableWidth
@@ -54,7 +59,10 @@ private val DnsCardSpacing = 12.dp
  *
  * Each card shows the queried type, the name, the addresses the core returned and the
  * upstream it asked, which is what the DNS panel of the reference screenshots shows.
+ * The summary card groups the records by the upstream they asked, and tapping one of
+ * its blocks narrows the list to the lookups that went through that upstream.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DnsMonitorContent(
     status: ConnectionMonitorStatus,
@@ -62,11 +70,31 @@ internal fun DnsMonitorContent(
     filteredRecords: List<MihomoDnsRecord>,
     error: String,
     searching: Boolean,
+    selectedUpstream: String?,
+    onUpstreamSelect: (String?) -> Unit,
     listState: LazyListState,
     contentPadding: PaddingValues,
 ) {
     val gutter = rememberPageGutter()
     val timeStyle = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+    // The upstream blocks aggregate the whole session, so a server that answered
+    // earlier stays reachable even when the search or the filters hide its records.
+    val upstreamCounts = remember(records) {
+        records.asSequence()
+            .filter { it.upstream.isNotBlank() }
+            .groupingBy { it.upstream }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key to it.value }
+    }
+    val visibleRecords = remember(filteredRecords, selectedUpstream) {
+        if (selectedUpstream == null) {
+            filteredRecords
+        } else {
+            filteredRecords.filter { it.upstream == selectedUpstream }
+        }
+    }
 
     BoxWithConstraints(Modifier.pageReadableWidth(DnsMonitorPageMaxWidth).fillMaxSize()) {
         val twoColumns = LocalAdaptiveWindow.current.showTwoColumns &&
@@ -94,18 +122,30 @@ internal fun DnsMonitorContent(
                 }
                 ConnectionMonitorStatus.Available -> Unit
             }
-            item("dns-summary") { DnsMonitorStatus(records.size) }
+            item("dns-summary") {
+                DnsMonitorStatus(records.size, upstreamCounts, selectedUpstream, onUpstreamSelect)
+            }
+            if (selectedUpstream != null) {
+                item("dns-upstream-filter") {
+                    ActiveUpstreamFilter(
+                        upstream = selectedUpstream,
+                        count = visibleRecords.size,
+                        onClear = { onUpstreamSelect(null) },
+                    )
+                }
+            }
             when {
-                filteredRecords.isEmpty() -> item("dns-empty") {
+                visibleRecords.isEmpty() -> item("dns-empty") {
                     StatusCard(
                         stringResource(
-                            if (searching) R.string.monitor_dns_no_match else R.string.monitor_dns_empty,
+                            if (searching || selectedUpstream != null) R.string.monitor_dns_no_match
+                            else R.string.monitor_dns_empty,
                         ),
                     )
                 }
                 twoColumns -> items(
-                    count = (filteredRecords.size + 1) / 2,
-                    key = { row -> "dns-${filteredRecords[row * 2].id}" },
+                    count = (visibleRecords.size + 1) / 2,
+                    key = { row -> "dns-${visibleRecords[row * 2].id}" },
                 ) { row ->
                     val first = row * 2
                     Row(
@@ -113,11 +153,11 @@ internal fun DnsMonitorContent(
                         horizontalArrangement = Arrangement.spacedBy(DnsCardSpacing),
                     ) {
                         DnsRecordCard(
-                            filteredRecords[first],
+                            visibleRecords[first],
                             timeStyle,
                             modifier = Modifier.weight(1f),
                         )
-                        val next = filteredRecords.getOrNull(first + 1)
+                        val next = visibleRecords.getOrNull(first + 1)
                         if (next == null) {
                             Spacer(Modifier.weight(1f))
                         } else {
@@ -126,7 +166,7 @@ internal fun DnsMonitorContent(
                     }
                 }
                 else -> items(
-                    filteredRecords,
+                    visibleRecords,
                     key = { "dns-${it.id}" },
                 ) { record ->
                     DnsRecordCard(record, timeStyle, modifier = Modifier.fillMaxWidth())
@@ -136,31 +176,91 @@ internal fun DnsMonitorContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DnsMonitorStatus(total: Int) {
+private fun DnsMonitorStatus(
+    total: Int,
+    upstreams: List<Pair<String, Int>>,
+    selectedUpstream: String?,
+    onUpstreamSelect: (String?) -> Unit,
+) {
     AsteriskStatusCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(DnsCardSpacing),
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = stringResource(R.string.monitor_dns_total),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = total.toString(),
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontFeatureSettings = "tnum",
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        Column(verticalArrangement = Arrangement.spacedBy(DnsCardSpacing)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(DnsCardSpacing),
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = stringResource(R.string.monitor_dns_total),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = total.toString(),
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontFeatureSettings = "tnum",
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            // The blocks group the records by the upstream they went through, so a tap
+            // narrows the list to that server without touching the filter menu.
+            if (upstreams.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    upstreams.forEach { (upstream, count) ->
+                        AsteriskFilterChip(
+                            selected = upstream == selectedUpstream,
+                            onClick = {
+                                onUpstreamSelect(if (upstream == selectedUpstream) null else upstream)
+                            },
+                            label = "${upstreamLabel(upstream)} · $count",
+                        )
+                    }
+                }
             }
         }
     }
+}
+
+/** The chip that names the upstream the list is narrowed to, with a way out. */
+@Composable
+private fun ActiveUpstreamFilter(
+    upstream: String,
+    count: Int,
+    onClear: () -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        AsteriskFilterChip(
+            selected = true,
+            onClick = onClear,
+            label = "${upstreamLabel(upstream)} · $count",
+            trailingIcon = {
+                Icon(
+                    Icons.Rounded.Clear,
+                    contentDescription = stringResource(R.string.monitor_dns_filter_clear),
+                )
+            },
+        )
+    }
+}
+
+/**
+ * The short name of an upstream, for the blocks and the filter chip.
+ *
+ * The full address stays in the record cards, because it is what the core asked.
+ */
+internal fun upstreamLabel(upstream: String): String = when {
+    upstream.contains("://") -> upstream.substringAfter("://").substringBefore('/')
+    upstream.indexOf('/') in 0 until upstream.length - 1 -> upstream.substringAfter('/')
+    else -> upstream
 }
 
 @Composable
