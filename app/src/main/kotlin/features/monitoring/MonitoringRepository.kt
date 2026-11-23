@@ -227,7 +227,10 @@ internal class MonitoringRepository(
                 val appState = stateStore.state.value
                 val routeResolver = MihomoDnsRouteResolver(
                     proxyNameservers = appState.dnsProxyServerNameserver,
-                    directNameservers = appState.dnsNameserver + appState.dnsFallback,
+                    // The bootstrap server that resolves the encrypted upstreams itself
+                    // never goes through the proxy, so it counts as direct too.
+                    directNameservers = appState.dnsNameserver +
+                        appState.dnsFallback + appState.dnsDefaultNameserver,
                 )
                 coroutineScope {
                     launch {

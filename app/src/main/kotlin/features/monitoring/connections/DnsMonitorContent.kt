@@ -17,16 +17,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.R
@@ -34,10 +39,12 @@ import engine.mihomo.runtime.MihomoDnsRecord
 import engine.mihomo.runtime.MihomoDnsRoute
 import features.monitoring.ConnectionMonitorStatus
 import features.monitoring.dns.DnsRecordFilter
+import ui.components.AsteriskCancelButton
 import ui.components.AsteriskChipTone
 import ui.components.AsteriskExpressiveCard
 import ui.components.AsteriskFilterChip
 import ui.components.AsteriskInfoChip
+import ui.components.AsteriskModalBottomSheet
 import ui.components.AsteriskStatusCard
 import ui.icons.AsteriskIcons as Icons
 import ui.layout.LocalAdaptiveWindow
@@ -74,6 +81,7 @@ internal fun DnsMonitorContent(
 ) {
     val gutter = rememberPageGutter()
     val timeStyle = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+    var detailRecord by remember { mutableStateOf<MihomoDnsRecord?>(null) }
     val visibleRecords = remember(filteredRecords, selectedUpstream) {
         if (selectedUpstream == null) {
             filteredRecords
@@ -142,12 +150,20 @@ internal fun DnsMonitorContent(
                             selectedUpstream,
                             onUpstreamSelect,
                             modifier = Modifier.weight(1f),
+                            onDetail = { detailRecord = visibleRecords[first] },
                         )
                         val next = visibleRecords.getOrNull(first + 1)
                         if (next == null) {
                             Spacer(Modifier.weight(1f))
                         } else {
-                            DnsRecordCard(next, timeStyle, selectedUpstream, onUpstreamSelect, modifier = Modifier.weight(1f))
+                            DnsRecordCard(
+                                next,
+                                timeStyle,
+                                selectedUpstream,
+                                onUpstreamSelect,
+                                modifier = Modifier.weight(1f),
+                                onDetail = { detailRecord = next },
+                            )
                         }
                     }
                 }
@@ -155,8 +171,26 @@ internal fun DnsMonitorContent(
                     visibleRecords,
                     key = { "dns-${it.id}" },
                 ) { record ->
-                    DnsRecordCard(record, timeStyle, selectedUpstream, onUpstreamSelect, modifier = Modifier.fillMaxWidth())
+                    DnsRecordCard(
+                        record,
+                        timeStyle,
+                        selectedUpstream,
+                        onUpstreamSelect,
+                        modifier = Modifier.fillMaxWidth(),
+                        onDetail = { detailRecord = record },
+                    )
                 }
+            }
+        }
+        val detail = detailRecord
+        AsteriskModalBottomSheet(
+            show = detail != null,
+            onDismissRequest = { detailRecord = null },
+            title = stringResource(R.string.monitor_dns_detail_title),
+            startAction = { AsteriskCancelButton(onClick = { detailRecord = null }) },
+        ) {
+            if (detail != null) {
+                DnsDetailContent(detail, timeStyle)
             }
         }
     }
@@ -222,6 +256,112 @@ internal fun upstreamLabel(upstream: String): String = when {
     else -> upstream
 }
 
+/** The detail sheet of one DNS lookup, which mirrors the reference screenshots. */
+@Composable
+private fun DnsDetailContent(
+    record: MihomoDnsRecord,
+    timeStyle: SimpleDateFormat,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = stringResource(R.string.monitor_dns_detail_basic),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        DnsDetailRow(
+            label = stringResource(R.string.monitor_dns_detail_time),
+            value = timeStyle.format(Date(record.timestampMillis)),
+        )
+        DnsDetailRow(
+            label = stringResource(R.string.monitor_dns_detail_domain),
+            value = record.domain,
+        )
+        DnsDetailRow(
+            label = stringResource(R.string.monitor_dns_detail_type),
+            value = record.recordType,
+        )
+        DnsDetailRow(
+            label = stringResource(R.string.monitor_dns_detail_initiator),
+            value = when (record.route) {
+                MihomoDnsRoute.Proxy -> stringResource(R.string.monitor_dns_route_proxy)
+                MihomoDnsRoute.Direct -> stringResource(R.string.monitor_dns_route_direct)
+                MihomoDnsRoute.Unknown -> DnsDetailUnavailable
+            },
+        )
+        DnsDetailRow(
+            label = stringResource(R.string.monitor_dns_detail_source),
+            value = record.upstream.ifBlank { DnsDetailUnavailable },
+        )
+        DnsDetailRow(
+            label = stringResource(R.string.monitor_dns_detail_cached),
+            value = stringResource(
+                if (record.cached) R.string.monitor_dns_yes else R.string.monitor_dns_no,
+            ),
+        )
+        DnsDetailRow(
+            label = stringResource(R.string.monitor_dns_detail_rcode),
+            value = if (record.failed) DnsDetailRcodeNameError else DnsDetailRcodeSuccess,
+        )
+        DnsDetailRow(
+            label = stringResource(R.string.monitor_dns_detail_delay),
+            value = record.elapsedMillis
+                ?.let { stringResource(R.string.monitor_dns_elapsed, it) }
+                ?: DnsDetailUnavailable,
+        )
+        Spacer(Modifier.height(DnsCardSpacing))
+        Text(
+            text = stringResource(R.string.monitor_dns_detail_answers),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+        val answers = record.addresses.ifEmpty { listOf(DnsDetailUnavailable) }
+        answers.forEach { answer ->
+            Surface(
+                shape = AsteriskShapeTokens.SmallContainer,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = answer,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                )
+            }
+        }
+    }
+}
+
+/** One label and value line of the detail sheet, with a divider below. */
+@Composable
+private fun DnsDetailRow(label: String, value: String) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.End,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    }
+}
+
+private const val DnsDetailUnavailable = "—"
+private const val DnsDetailRcodeSuccess = "NOERROR"
+private const val DnsDetailRcodeNameError = "NXDOMAIN"
+
 @Composable
 private fun DnsRecordCard(
     record: MihomoDnsRecord,
@@ -229,10 +369,12 @@ private fun DnsRecordCard(
     selectedUpstream: String?,
     onUpstreamSelect: (String?) -> Unit,
     modifier: Modifier = Modifier,
+    onDetail: () -> Unit = {},
 ) {
     AsteriskExpressiveCard(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        onClick = onDetail,
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(18.dp),
@@ -251,16 +393,6 @@ private fun DnsRecordCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 AsteriskInfoChip(text = record.recordType)
-                when (record.route) {
-                    MihomoDnsRoute.Proxy -> AsteriskInfoChip(
-                        text = stringResource(R.string.monitor_dns_route_proxy),
-                        tone = AsteriskChipTone.Secondary,
-                    )
-                    MihomoDnsRoute.Direct -> AsteriskInfoChip(
-                        text = stringResource(R.string.monitor_dns_route_direct),
-                    )
-                    MihomoDnsRoute.Unknown -> Unit
-                }
                 if (record.cached) {
                     AsteriskInfoChip(text = stringResource(R.string.monitor_dns_cached))
                 }
@@ -285,37 +417,57 @@ private fun DnsRecordCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (record.upstream.isNotBlank()) {
-                // The upstream answers through one block: tapping it narrows the list
-                // to the lookups that went through this server, and tapping it again
-                // brings the whole list back.
-                val selected = record.upstream == selectedUpstream
-                Surface(
-                    onClick = { onUpstreamSelect(if (selected) null else record.upstream) },
-                    shape = AsteriskShapeTokens.SmallContainer,
-                    color = if (selected) MaterialTheme.colorScheme.secondaryContainer
-                    else MaterialTheme.colorScheme.surfaceContainerHighest,
+            if (record.upstream.isNotBlank() || record.route != MihomoDnsRoute.Unknown) {
+                // The route sits next to the upstream, because together they say where
+                // the lookup went: the server and the way the core reached it.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = record.upstream,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        if (selected) {
-                            Icon(
-                                Icons.Rounded.Clear,
-                                contentDescription = stringResource(R.string.monitor_dns_filter_clear),
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                    if (record.upstream.isNotBlank()) {
+                        // The upstream answers through one block: tapping it narrows the
+                        // list to the lookups that went through this server, and tapping
+                        // it again brings the whole list back.
+                        val selected = record.upstream == selectedUpstream
+                        Surface(
+                            onClick = { onUpstreamSelect(if (selected) null else record.upstream) },
+                            shape = AsteriskShapeTokens.SmallContainer,
+                            color = if (selected) MaterialTheme.colorScheme.secondaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = record.upstream,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (selected) {
+                                    Icon(
+                                        Icons.Rounded.Clear,
+                                        contentDescription = stringResource(R.string.monitor_dns_filter_clear),
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
                         }
+                    }
+                    when (record.route) {
+                        MihomoDnsRoute.Proxy -> AsteriskInfoChip(
+                            text = stringResource(R.string.monitor_dns_route_proxy),
+                            tone = AsteriskChipTone.Secondary,
+                        )
+                        MihomoDnsRoute.Direct -> AsteriskInfoChip(
+                            text = stringResource(R.string.monitor_dns_route_direct),
+                        )
+                        MihomoDnsRoute.Unknown -> Unit
                     }
                 }
             }

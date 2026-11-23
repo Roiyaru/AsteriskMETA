@@ -8,41 +8,58 @@ import engine.mihomo.runtime.MihomoDnsRoute
 /**
  * Tells whether a DNS lookup reached its upstream through the proxy or directly.
  *
- * The core keeps the proxy side and the direct side in separate name server lists, so the
- * upstream the core names in its log decides which side answered the lookup.
+ * The core keeps the proxy side and the direct side in separate name server lists, so
+ * the upstream the core names in its log decides which side answered the lookup. The
+ * core writes the upstream in its own shape, which adds the port and may drop the
+ * scheme marker, so both sides reduce to a shared key before the comparison.
  */
 internal class MihomoDnsRouteResolver(
     proxyNameservers: List<String>,
     directNameservers: List<String>,
 ) {
-    private val proxyUpstreams = proxyNameservers.map(::normalizedUpstream).toSet()
-    private val directUpstreams = directNameservers.map(::normalizedUpstream).toSet()
+    private val proxyKeys = proxyNameservers.map(::upstreamKey).toSet()
+    private val directKeys = directNameservers.map(::upstreamKey).toSet()
 
     /** Classifies the upstream the core named in its log. */
     fun resolve(upstream: String): MihomoDnsRoute {
         if (upstream.isBlank()) return MihomoDnsRoute.Unknown
-        val normalized = normalizedUpstream(upstream)
+        val key = upstreamKey(upstream)
         return when {
-            normalized in proxyUpstreams -> MihomoDnsRoute.Proxy
-            normalized in directUpstreams -> MihomoDnsRoute.Direct
+            key in proxyKeys -> MihomoDnsRoute.Proxy
+            key in directKeys -> MihomoDnsRoute.Direct
             else -> MihomoDnsRoute.Unknown
         }
     }
 }
 
 /**
- * Reduces an upstream address to a comparable form.
+ * Reduces an upstream address to a comparable key.
  *
- * The core names the upstream by its address, such as `https://dns.google/dns-query`,
- * while the configuration lists it with a scheme and a port, such as
- * `https://dns.google/dns-query#`. The port and the trailing marker do not matter.
+ * The configuration may write `https://dns.alidns.com/dns-query` while the core logs
+ * `https://dns.alidns.com:443/dns-query`, and a plain server may appear as `223.5.5.5`
+ * in the configuration and as `udp/223.5.5.5:53` in the log. The key drops the scheme
+ * marker, the port and the fragment, and keeps the host and the path, so the two
+ * shapes of one server land on the same key.
  */
-private fun normalizedUpstream(value: String): String {
-    val withoutMarker = value.substringBefore('#').trim()
-    val schemeSeparator = withoutMarker.indexOf("://")
-    if (schemeSeparator <= 0) return withoutMarker
-    val scheme = withoutMarker.substring(0, schemeSeparator)
-    val host = withoutMarker.substring(schemeSeparator + 3)
-    val withoutPort = host.substringBeforeLast(':', missingDelimiterValue = host)
-    return "$scheme://$withoutPort"
+internal fun upstreamKey(value: String): String {
+    var rest = value.substringBefore('#').trim()
+    val schemeSeparator = rest.indexOf("://")
+    if (schemeSeparator >= 0) {
+        rest = rest.substring(schemeSeparator + 3)
+    } else {
+        // A plain transport marker, such as `udp/223.5.5.5:53` or `tcp/dns.google:853`.
+        val marker = rest.substringBefore('/')
+        if (marker.length <= 6 && marker.all { it.isLetter() }) {
+            rest = rest.substringAfter('/')
+        }
+    }
+    val path = if ('/' in rest) "/${rest.substringAfter('/')}" else ""
+    var authority = rest.substringBefore('/')
+    if (authority.startsWith("[")) {
+        // An IPv6 authority keeps its brackets and drops the port after them.
+        authority = authority.substringBefore(']') + "]"
+    } else {
+        authority = authority.substringBeforeLast(':', missingDelimiterValue = authority)
+    }
+    return authority + path
 }
