@@ -5,6 +5,7 @@ package features.monitoring
 
 import android.content.Context
 import android.os.SystemClock
+import app.AppState
 import app.modes.RunModeVpnService
 import app.modes.isRootRunMode
 import data.AndroidAppStateStore
