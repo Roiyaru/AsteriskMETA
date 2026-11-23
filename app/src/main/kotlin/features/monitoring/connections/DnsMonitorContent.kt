@@ -84,11 +84,13 @@ internal fun DnsMonitorContent(
     val timeStyle = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
     var detailRecord by remember { mutableStateOf<MihomoDnsRecord?>(null) }
     val visibleRecords = remember(filteredRecords, selectedUpstream) {
-        if (selectedUpstream == null) {
+        val narrowed = if (selectedUpstream == null) {
             filteredRecords
         } else {
             filteredRecords.filter { it.upstream == selectedUpstream }
         }
+        // The newest lookup sits on top, so the list reads like a live feed.
+        narrowed.asReversed()
     }
 
     BoxWithConstraints(Modifier.pageReadableWidth(DnsMonitorPageMaxWidth).fillMaxSize()) {
