@@ -16,6 +16,8 @@
 5. **发布说明按本次改动自动生成**：新增 `Generate release notes` 步骤，基准为上一次成功构建的提交；按每个提交触及的路径分流为「应用改动」与「构建与文档」两组；附全量 `--stat` 文件统计；不再沿用旧版硬编码说明。
 
 ### 关键实现要点（后续修改前必读）
+- **versionCode 规则**：跟随上游——`git rev-list --count HEAD`。我方 fork 已合并上游完整历史，因此计数天然高于上游（上游 608 → 我方 625+）。`build-test.yml` 用 `fetch-depth: 0` 取得完整历史；**不要再用 `500 + GITHUB_RUN_NUMBER`**，那会让版本号远落后上游。
+- **架构**：源码保留全架构（`ProjectConfig.SUPPORTED_ANDROID_ABIS`），构建通过 gradle 属性 `buildAbis` / `buildUniversalApk` 收窄。test 与 release 流程都只构建 arm64-v8a。
 - **DNS 数据来源**：mihomo 无 DNS 历史接口，改为订阅 `GET /logs?level=debug` 解析 `[DNS]` 行。mihomo 的 `log.Debugln` 无条件进订阅通道，与全局 log-level 无关，因此订阅 debug 即可拿到。
 - **日志行格式**：
   - `[DNS] resolve <domain> <TYPE> from <upstream>`
@@ -27,6 +29,8 @@
 ### 踩坑备忘
 - 本地 Gradle 发行版下载被墙，**无法本地编译**；必须用 GitHub Actions 构建。
 - CI 失败日志读取方式：工作流 `Upload build logs on failure` 会把 `build.log` 发到 release `ci-logs` 标签，地址 `https://github.com/Roiyaru/AsteriskMETA/releases/download/ci-logs/build.log`。直接 curl 会被墙，**用 WebFetch 读取**。
+- GitHub REST API 匿名调用有速率限制；查询构建状态可改用 WebFetch 打开 Actions 页面。
+- shell 脚本里遍历提交列表要用 `git rev-list`（每行有换行），**不要用 `git log --pretty=format:'%H'`**（末行无换行，`while read` 读不到，导致列表为空）。
 - `release.yml`（Build Release APKs）历史上一直失败，原因是 `Validate signing secrets` 缺密钥，与代码无关；验证请用 `build-test.yml`。
 
 ### 下一步（若需继续）
