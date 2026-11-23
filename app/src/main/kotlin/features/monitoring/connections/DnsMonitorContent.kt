@@ -255,10 +255,8 @@ private fun DnsRecordCard(
 internal fun dnsFilterLabel(filter: DnsRecordFilter): String = when (filter) {
     DnsRecordFilter.A -> "A"
     DnsRecordFilter.AAAA -> "AAAA"
-    DnsRecordFilter.HTTPS -> "HTTPS"
-    DnsRecordFilter.Other -> stringResource(R.string.monitor_dns_filter_other)
+    DnsRecordFilter.Https -> stringResource(R.string.monitor_dns_filter_https)
     DnsRecordFilter.Cached -> stringResource(R.string.monitor_dns_cached)
-    DnsRecordFilter.Failed -> stringResource(R.string.monitor_dns_filter_nxdomain)
     DnsRecordFilter.Proxy -> stringResource(R.string.monitor_dns_route_proxy)
     DnsRecordFilter.Direct -> stringResource(R.string.monitor_dns_route_direct)
 }

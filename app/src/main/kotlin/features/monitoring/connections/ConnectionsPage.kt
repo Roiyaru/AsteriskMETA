@@ -633,7 +633,21 @@ private fun DnsFilterMenu(
                     expanded = expanded,
                     onDismissRequest = { expanded = false },
                 ) {
-                    DnsRecordFilter.entries.forEach { option ->
+                    // The sources come first and the queried types follow, so the two
+                    // dimensions stay apart instead of mixing in the menu.
+                    DnsFilterGroupHeader(stringResource(R.string.monitor_dns_filter_sources))
+                    DnsSourceFilter.entries.forEach { option ->
+                        AsteriskDropdownMenuItem(
+                            text = dnsFilterLabel(option),
+                            selected = option in filters,
+                            onClick = {
+                                onFilterChange(option)
+                                expanded = false
+                            },
+                        )
+                    }
+                    DnsFilterGroupHeader(stringResource(R.string.monitor_dns_filter_types))
+                    DnsTypeFilter.entries.forEach { option ->
                         AsteriskDropdownMenuItem(
                             text = dnsFilterLabel(option),
                             selected = option in filters,
@@ -657,6 +671,17 @@ private fun DnsFilterMenu(
             },
         )
     }
+}
+
+/** The heading of a group of filters inside the menu. */
+@Composable
+private fun DnsFilterGroupHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

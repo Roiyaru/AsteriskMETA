@@ -191,8 +191,9 @@
     <string name="monitor_dns_failed">NXDOMAIN</string>
     <string name="monitor_dns_filter">Filter</string>
     <string name="monitor_dns_filter_clear">Clear filters</string>
-    <string name="monitor_dns_filter_nxdomain">NXDOMAIN</string>
-    <string name="monitor_dns_filter_other">Other</string>
+    <string name="monitor_dns_filter_https">HTTPS/SVCB</string>
+    <string name="monitor_dns_filter_sources">Source</string>
+    <string name="monitor_dns_filter_types">Query type</string>
     <string name="monitor_dns_no_match">No matching lookups</string>
     <string name="monitor_dns_route_direct">Direct</string>
     <string name="monitor_dns_route_proxy">Proxy</string>

@@ -169,13 +169,23 @@ internal class MihomoDnsLogParser {
         if (!answer.startsWith('[') || closing < 0) {
             return emptyList<String>() to answer
         }
-        val addresses = answer.substring(1, closing)
+        val body = answer.substring(1, closing).trim()
+        val recordType = answer.substring(closing + 1).trim()
+        // The summary of a service binding record holds the parameters of the record
+        // rather than addresses, so it stays in one piece.
+        if (isServiceBindingType(recordType)) {
+            return listOf(body).filter { it.isNotEmpty() } to recordType
+        }
+        val addresses = body
             .split(' ', ',')
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-        val recordType = answer.substring(closing + 1).trim()
         return addresses to recordType.ifEmpty { "A" }
     }
+
+    private fun isServiceBindingType(recordType: String): Boolean =
+        recordType.equals("HTTPS", ignoreCase = true) ||
+            recordType.equals("SVCB", ignoreCase = true)
 
     private fun isFailure(recordType: String, addresses: List<String>): Boolean {
         if (addresses.isNotEmpty()) return false
