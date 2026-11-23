@@ -216,7 +216,7 @@ internal class MonitoringRepository(
             val yaml = if (appState.usesRawMihomoConfig()) {
                 appContext.loadSelectedRawConfig(appState)?.sourceBytes?.toString(Charsets.UTF_8)
             } else {
-                MihomoProfileFactory.buildProfile(appContext, appState).toString(Charsets.UTF_8)
+                MihomoProfileFactory.buildProfile(appContext, appState)
             }
             val dns = yaml?.loadMihomoProfileObject()?.get("dns") as? Map<*, *>
             if (dns != null) {

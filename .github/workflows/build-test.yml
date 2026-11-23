@@ -146,15 +146,15 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          # The compile errors go to the job summary, which stays with the run that
-          # produced them.
+          # The compile errors go to the job summary and into the log release body,
+          # because the summary of a failed run is hard to read from outside GitHub.
           {
             echo "### Compile errors"
             echo ""
             echo '```'
             grep -E "^e: |error: |Compilation error" build.log | head -60 || true
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY" > compile-errors.md
 
       - name: Upload build logs on failure
         if: failure()
@@ -163,6 +163,7 @@ jobs:
           tag_name: ci-logs
           name: CI build logs
           files: build.log
+          body_path: compile-errors.md
 
       - name: Sign release APKs
         shell: bash
