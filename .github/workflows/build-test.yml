@@ -234,8 +234,18 @@ jobs:
             echo "### 本次变更"
             echo ""
             if [ -n "$previous_sha" ] && git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
-              git log --no-merges --pretty=format:'- %s (%h)' "${previous_sha}..${GITHUB_SHA}" || true
+              # A commit that only touches the workflow or the notes changes nothing in
+              # the app, so it does not belong in the summary.
+              git log --no-merges --pretty=format:'%s' "${previous_sha}..${GITHUB_SHA}" -- app asteriskd buildSrc \
+                | sed 's/^/- /' || true
               echo ""
+              other="$(git log --no-merges --pretty=format:'%s' "${previous_sha}..${GITHUB_SHA}" -- .github PROGRESS.md 2>/dev/null | head -n 5 || true)"
+              if [ -n "$other" ]; then
+                echo ""
+                echo "其它（非应用代码）："
+                echo "$other" | sed 's/^/- /'
+                echo ""
+              fi
             else
               echo "- 首次构建"
               echo ""
@@ -244,9 +254,12 @@ jobs:
             echo "### 变更涉及的文件"
             echo ""
             if [ -n "$previous_sha" ] && git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
-              git diff --stat "${previous_sha}..${GITHUB_SHA}" | tail -n 30
+              # The workflow and the notes themselves are not part of what the app
+              # changed, so they stay out of the summary.
+              git diff --stat "${previous_sha}..${GITHUB_SHA}" -- app asteriskd buildSrc \
+                ':(exclude).github' ':(exclude)PROGRESS.md' | tail -n 30
             else
-              git show --stat --oneline HEAD | tail -n 30
+              git show --stat --oneline HEAD -- app asteriskd buildSrc | tail -n 30
             fi
           } > release-notes.md
 
