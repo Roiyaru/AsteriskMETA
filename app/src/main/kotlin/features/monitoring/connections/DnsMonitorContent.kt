@@ -6,8 +6,6 @@ package features.monitoring.connections
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -59,10 +57,9 @@ private val DnsCardSpacing = 12.dp
  *
  * Each card shows the queried type, the name, the addresses the core returned and the
  * upstream it asked, which is what the DNS panel of the reference screenshots shows.
- * The summary card groups the records by the upstream they asked, and tapping one of
- * its blocks narrows the list to the lookups that went through that upstream.
+ * The upstream on a card is tappable, and tapping it narrows the list to the lookups
+ * that went through that upstream.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DnsMonitorContent(
     status: ConnectionMonitorStatus,
@@ -77,17 +74,6 @@ internal fun DnsMonitorContent(
 ) {
     val gutter = rememberPageGutter()
     val timeStyle = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
-    // The upstream blocks aggregate the whole session, so a server that answered
-    // earlier stays reachable even when the search or the filters hide its records.
-    val upstreamCounts = remember(records) {
-        records.asSequence()
-            .filter { it.upstream.isNotBlank() }
-            .groupingBy { it.upstream }
-            .eachCount()
-            .entries
-            .sortedByDescending { it.value }
-            .map { it.key to it.value }
-    }
     val visibleRecords = remember(filteredRecords, selectedUpstream) {
         if (selectedUpstream == null) {
             filteredRecords
@@ -122,9 +108,7 @@ internal fun DnsMonitorContent(
                 }
                 ConnectionMonitorStatus.Available -> Unit
             }
-            item("dns-summary") {
-                DnsMonitorStatus(records.size, upstreamCounts, selectedUpstream, onUpstreamSelect)
-            }
+            item("dns-summary") { DnsMonitorStatus(records.size) }
             if (selectedUpstream != null) {
                 item("dns-upstream-filter") {
                     ActiveUpstreamFilter(
@@ -155,13 +139,15 @@ internal fun DnsMonitorContent(
                         DnsRecordCard(
                             visibleRecords[first],
                             timeStyle,
+                            selectedUpstream,
+                            onUpstreamSelect,
                             modifier = Modifier.weight(1f),
                         )
                         val next = visibleRecords.getOrNull(first + 1)
                         if (next == null) {
                             Spacer(Modifier.weight(1f))
                         } else {
-                            DnsRecordCard(next, timeStyle, modifier = Modifier.weight(1f))
+                            DnsRecordCard(next, timeStyle, selectedUpstream, onUpstreamSelect, modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -169,62 +155,35 @@ internal fun DnsMonitorContent(
                     visibleRecords,
                     key = { "dns-${it.id}" },
                 ) { record ->
-                    DnsRecordCard(record, timeStyle, modifier = Modifier.fillMaxWidth())
+                    DnsRecordCard(record, timeStyle, selectedUpstream, onUpstreamSelect, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun DnsMonitorStatus(
-    total: Int,
-    upstreams: List<Pair<String, Int>>,
-    selectedUpstream: String?,
-    onUpstreamSelect: (String?) -> Unit,
-) {
+private fun DnsMonitorStatus(total: Int) {
     AsteriskStatusCard {
-        Column(verticalArrangement = Arrangement.spacedBy(DnsCardSpacing)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(DnsCardSpacing),
-            ) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = stringResource(R.string.monitor_dns_total),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = total.toString(),
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontFeatureSettings = "tnum",
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            // The blocks group the records by the upstream they went through, so a tap
-            // narrows the list to that server without touching the filter menu.
-            if (upstreams.isNotEmpty()) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    upstreams.forEach { (upstream, count) ->
-                        AsteriskFilterChip(
-                            selected = upstream == selectedUpstream,
-                            onClick = {
-                                onUpstreamSelect(if (upstream == selectedUpstream) null else upstream)
-                            },
-                            label = "${upstreamLabel(upstream)} · $count",
-                        )
-                    }
-                }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(DnsCardSpacing),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(R.string.monitor_dns_total),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = total.toString(),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontFeatureSettings = "tnum",
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -267,6 +226,8 @@ internal fun upstreamLabel(upstream: String): String = when {
 private fun DnsRecordCard(
     record: MihomoDnsRecord,
     timeStyle: SimpleDateFormat,
+    selectedUpstream: String?,
+    onUpstreamSelect: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     AsteriskExpressiveCard(
@@ -325,18 +286,37 @@ private fun DnsRecordCard(
                 )
             }
             if (record.upstream.isNotBlank()) {
+                // The upstream answers through one block: tapping it narrows the list
+                // to the lookups that went through this server, and tapping it again
+                // brings the whole list back.
+                val selected = record.upstream == selectedUpstream
                 Surface(
+                    onClick = { onUpstreamSelect(if (selected) null else record.upstream) },
                     shape = AsteriskShapeTokens.SmallContainer,
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    color = if (selected) MaterialTheme.colorScheme.secondaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHighest,
                 ) {
-                    Text(
-                        text = record.upstream,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = record.upstream,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (selected) {
+                            Icon(
+                                Icons.Rounded.Clear,
+                                contentDescription = stringResource(R.string.monitor_dns_filter_clear),
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
             record.elapsedMillis?.let { elapsed ->
