@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Collects the DNS lookups the core performed.
@@ -35,6 +36,9 @@ internal class MihomoDnsRecordCollector(
 ) {
     private val mutableRecords = MutableStateFlow<List<MihomoDnsRecord>>(emptyList())
     val records: StateFlow<List<MihomoDnsRecord>> = mutableRecords.asStateFlow()
+
+    /** The source of the unique ids the record list keys its rows by. */
+    private val idCounter = AtomicLong(0)
 
     /**
      * Streams the core log until the collector is cancelled.
@@ -75,13 +79,20 @@ internal class MihomoDnsRecordCollector(
     private suspend fun restorePreviousRecords() {
         val restored = withContext(Dispatchers.IO) { MihomoDnsRecordStore.read(context) }
         if (restored.isEmpty()) return
-        mutableRecords.value = restored
+        // The restored records come back without ids, so they get fresh ones from the
+        // same counter as the records that follow. The list then keys every record by
+        // an id that is unique for the whole session.
+        mutableRecords.value = restored.map { it.copy(id = idCounter.getAndIncrement()) }
     }
 
     private fun publish(records: List<MihomoDnsRecord>) {
-        val merged = (mutableRecords.value + records).takeLast(MaxRecords)
+        // The core answers the same lookup through several upstreams at once, so the
+        // records from one burst can share a timestamp, a name and a type. The list
+        // keys its rows by the id, so every record gets one before it is shown.
+        val identified = records.map { it.copy(id = idCounter.getAndIncrement()) }
+        val merged = (mutableRecords.value + identified).takeLast(MaxRecords)
         mutableRecords.value = merged
-        MihomoDnsRecordStore.append(context, records)
+        MihomoDnsRecordStore.append(context, identified)
     }
 
     private companion object {

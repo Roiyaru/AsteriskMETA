@@ -105,7 +105,7 @@ internal fun DnsMonitorContent(
                 }
                 twoColumns -> items(
                     count = (filteredRecords.size + 1) / 2,
-                    key = { row -> "dns-${filteredRecords[row * 2].timestampMillis}-${row * 2}" },
+                    key = { row -> "dns-${filteredRecords[row * 2].id}" },
                 ) { row ->
                     val first = row * 2
                     Row(
@@ -127,7 +127,7 @@ internal fun DnsMonitorContent(
                 }
                 else -> items(
                     filteredRecords,
-                    key = { "dns-${it.timestampMillis}-${it.domain}-${it.recordType}" },
+                    key = { "dns-${it.id}" },
                 ) { record ->
                     DnsRecordCard(record, timeStyle, modifier = Modifier.fillMaxWidth())
                 }

@@ -38,3 +38,9 @@
 ### 下一步（若需继续）
 - 真机验证 DNS 标签页：需要 core 的 debug 日志流有输出，若用户日志级别非 debug 也不影响（订阅独立）。
 - 可能的增强：把 DNS 记录的「代理/直连」判定与 core 实际路由进一步对齐（当前按 upstream 是否属于 `proxy-server-nameserver` / `nameserver`+`fallback` 判定）。
+
+### 崩溃修复记录（2026-11-24）
+- 用户反馈「打开代理几分钟后崩溃」，指向上游 2c45a7e（FlowRow 内 BoxWithConstraints 崩溃）。核实：该提交已在 test-55 起的所有构建中（`git merge-base --is-ancestor` 通过），`NetworkMonitorPage.kt` 与上游逐字节一致，全树无其他 BoxInFlowRow 模式，CI 补丁只碰 BuildConfig.kt。**上游修复不是缺因**。
+- 真正缺陷（fork 新增代码）：DNS 页 LazyColumn 的 key 用 `时间戳+域名+类型`，mihomo 对同一查询并发多个上游，各打一行 resolve/answer 日志 → 同毫秒同域名同类型出现重复 key → Compose `IllegalArgumentException` 崩溃。
+- 修复：collector 用 `AtomicLong` 给每条记录分配唯一 `id`（`MihomoDnsRecord.id`），恢复历史记录时重新编号，列表 key 改用 `id`。同时修正并行应答被误标「缓存」的问题（缓存标记只来自 cache hit 行）。
+

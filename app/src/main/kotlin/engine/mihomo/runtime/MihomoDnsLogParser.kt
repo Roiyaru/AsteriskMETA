@@ -11,6 +11,8 @@ package engine.mihomo.runtime
  * external controller does not expose.
  */
 internal data class MihomoDnsRecord(
+    /** The unique id the collector assigned to the record. */
+    val id: Long = -1L,
     /** Epoch milliseconds when the core answered the lookup. */
     val timestampMillis: Long,
     /** The queried name, for example `cl-199.911-gt2-rs.com`. */
@@ -73,9 +75,6 @@ internal class MihomoDnsLogParser {
                     parsed.answer.copy(
                         domain = lookup?.domain ?: parsed.answer.domain,
                         elapsedMillis = lookup?.let { parsed.answer.timestampMillis - it.timestampMillis },
-                        // A cache hit never reaches an upstream, so it carries its own mark.
-                        // Otherwise the answer came from the core's cache.
-                        cached = parsed.answer.cached || lookup == null,
                     ),
                 )
             }
