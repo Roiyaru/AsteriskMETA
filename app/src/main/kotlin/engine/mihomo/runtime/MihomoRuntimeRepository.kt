@@ -461,7 +461,7 @@ internal class MihomoRuntimeRepository(
             }
             val proxies = state.value.proxies
             val outbounds = rules.mapTo(linkedSetOf(), RuntimeRouteRule::policy)
-                .associateWith(proxies::resolveRuleOutboundChain)
+                .associateWith { policy -> proxies.resolveRuleOutboundChain(policy) }
             rules.map { rule ->
                 rule.copy(
                     size = if (rule.needsRuleProviderSize) providerSizes[rule.payload]?.ruleCount else rule.size,

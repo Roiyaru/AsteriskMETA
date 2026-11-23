@@ -223,19 +223,21 @@ internal class MonitoringRepository(
                     }
                     return@collectLatest
                 }
-                launch {
-                    dnsRecordCollector.records.collect { records ->
-                        mutableState.update { current ->
-                            current.copy(
-                                dns = current.dns.copy(
-                                    records = records,
-                                    status = ConnectionMonitorStatus.Available,
-                                ),
-                            )
+                coroutineScope {
+                    launch {
+                        dnsRecordCollector.records.collect { records ->
+                            mutableState.update { current ->
+                                current.copy(
+                                    dns = current.dns.copy(
+                                        records = records,
+                                        status = ConnectionMonitorStatus.Available,
+                                    ),
+                                )
+                            }
                         }
                     }
+                    dnsRecordCollector.collect(control)
                 }
-                dnsRecordCollector.collect(control)
             }
     }
 

@@ -56,7 +56,7 @@ internal class MihomoDnsLogParser {
             is ParsedLine.Answer -> {
                 val lookup = pending.remove(parsed.key)
                 listOf(
-                    parsed.answer.toRecord(
+                    parsed.answer.copy(
                         domain = lookup?.domain ?: parsed.answer.domain,
                         elapsedMillis = lookup?.let { parsed.answer.timestampMillis - it.timestampMillis },
                         cached = lookup == null,
