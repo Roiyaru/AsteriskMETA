@@ -59,7 +59,7 @@ internal class MihomoDnsRecordCollector(
                         // The core names the app of a connection a moment after the lookup
                         // it needed, so the records read their app as the notices arrive.
                         val enriched = parser.enrichApps(mutableRecords.value)
-                        if (enriched !== mutableRecords.value) mutableRecords.value = enriched
+                        if (enriched != mutableRecords.value) mutableRecords.value = enriched
                     }
                 }
             } catch (error: Throwable) {

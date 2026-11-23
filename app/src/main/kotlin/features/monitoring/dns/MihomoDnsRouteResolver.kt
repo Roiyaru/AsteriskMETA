@@ -24,8 +24,15 @@ internal class MihomoDnsRouteResolver(
     fun resolve(upstream: String): MihomoDnsRoute {
         if (upstream.isBlank()) return MihomoDnsRoute.Unknown
         // A name server that names a proxy adapter in its fragment goes through it,
-        // whichever list it came from.
-        if (upstreamNamesProxyAdapter(upstream)) return MihomoDnsRoute.Proxy
+        // but the built-in direct adapter is the local network itself.
+        val adapter = upstreamFragmentAdapter(upstream)
+        if (adapter != null) {
+            return if (adapter.equals(BuiltinDirectAdapter, ignoreCase = true)) {
+                MihomoDnsRoute.Direct
+            } else {
+                MihomoDnsRoute.Proxy
+            }
+        }
         // The system resolver asks the local network's own servers, which never go
         // through the proxy.
         if (upstream.startsWith(SystemDnsMarker)) return MihomoDnsRoute.Direct
@@ -39,16 +46,19 @@ internal class MihomoDnsRouteResolver(
 }
 
 /**
- * Tells whether the address names a proxy adapter in its fragment.
+ * Tells which proxy adapter the address names in its fragment, if any.
  *
  * The fragment carries the adapter name as a bare token, such as `#PROXY` or
  * `#PROXY&h3=true`, while the rest of the tokens come as pairs.
  */
-private fun upstreamNamesProxyAdapter(upstream: String): Boolean {
+private fun upstreamFragmentAdapter(upstream: String): String? {
     val fragment = upstream.substringAfter('#', missingDelimiterValue = "")
-    if (fragment.isEmpty()) return false
-    return fragment.split('&').any { token -> token.isNotEmpty() && '=' !in token }
+    if (fragment.isEmpty()) return null
+    return fragment.split('&').firstOrNull { token -> token.isNotEmpty() && '=' !in token }
 }
+
+/** The built-in adapter that leaves through the local network. */
+private const val BuiltinDirectAdapter = "DIRECT"
 
 /** The marker the core puts in front of the system resolver's expanded servers. */
 internal const val SystemDnsMarker = "system("

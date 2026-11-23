@@ -1217,6 +1217,11 @@ internal class MihomoRuntimeRepository(
 
     private fun publishedProfileFile(): File = File(appContext.mihomoResourceFilePaths().dataDir, "config.yaml")
 
+    /** The configuration the running core loaded, which is the truth about its settings. */
+    internal fun publishedProfileText(): String? = runCatching {
+        publishedProfileFile().takeIf(File::exists)?.readText()
+    }.getOrNull()
+
     private suspend fun loadProxyGroupSources(useBridge: Boolean): Map<String, MihomoProxyGroupSources> {
         return runRuntimeRequest {
             val content = if (useBridge) {

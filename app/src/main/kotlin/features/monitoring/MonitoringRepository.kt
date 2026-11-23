@@ -9,7 +9,6 @@ import app.AppState
 import app.modes.RunModeVpnService
 import app.modes.isRootRunMode
 import data.AndroidAppStateStore
-import engine.mihomo.MihomoProfileFactory
 import engine.mihomo.loadMihomoProfileObject
 import engine.mihomo.raw.loadSelectedRawConfig
 import engine.mihomo.raw.usesRawMihomoConfig
@@ -206,24 +205,20 @@ internal class MonitoringRepository(
     /**
      * Builds the route resolver from the name servers the core actually received.
      *
-     * The core may take its DNS section from the profile, from the raw YAML or from
-     * the app settings, so the lists come from the same source the running config was
-     * built from instead of from the app settings alone.
+     * The truth is the configuration file the core loaded, whatever produced it: the
+     * profile, the raw YAML or the app settings.
      */
     private fun resolveDnsRouteResolver(appState: AppState): MihomoDnsRouteResolver {
         var proxy = emptyList<String>()
         var direct = emptyList<String>()
         runCatching {
-            val yaml = if (appState.usesRawMihomoConfig()) {
-                appContext.loadSelectedRawConfig(appState)?.sourceBytes?.toString(Charsets.UTF_8)
-            } else {
-                MihomoProfileFactory.buildProfile(appContext, appState)
-            }
-            val dns = yaml?.loadMihomoProfileObject()?.get("dns") as? Map<*, *>
+            val dns = mihomoRuntime.publishedProfileText()
+                ?.loadMihomoProfileObject()?.get("dns") as? Map<*, *>
             if (dns != null) {
-                proxy = dns.stringList("proxy-server-nameserver")
+                proxy = dns.stringList("proxy-server-nameserver") +
+                    dns.mapValues("proxy-server-nameserver-policy")
                 direct = dns.stringList("nameserver") + dns.stringList("fallback") +
-                    dns.stringList("default-nameserver")
+                    dns.stringList("default-nameserver") + dns.stringList("direct-nameserver")
             }
         }
         if (proxy.isEmpty() && direct.isEmpty()) {
@@ -767,5 +762,16 @@ private const val LogTag = "MonitoringRepository"
 private fun Map<*, *>.stringList(key: String): List<String> = when (val value = get(key)) {
     is List<*> -> value.mapNotNull { item -> item?.toString() }.filter(String::isNotBlank)
     is String -> listOf(value)
+    else -> emptyList()
+}
+
+/** The servers of a policy map, which pairs a domain with one server or a list. */
+private fun Map<*, *>.mapValues(key: String): List<String> = when (val value = get(key)) {
+    is Map<*, *> -> value.values.flatMap { target ->
+        when (target) {
+            is List<*> -> target.mapNotNull { it?.toString() }
+            else -> listOfNotNull(target?.toString())
+        }
+    }.filter(String::isNotBlank)
     else -> emptyList()
 }
