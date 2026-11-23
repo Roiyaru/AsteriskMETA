@@ -265,8 +265,7 @@ jobs:
               if [ -z "$app_list" ] && [ -z "$other_list" ]; then
                 echo "- 无代码变更"
                 echo ""
-              fi
-            else
+              fi            else
               echo "- 首次构建"
               echo ""
             fi
@@ -274,12 +273,9 @@ jobs:
             echo "### 变更涉及的文件"
             echo ""
             if [ -n "$previous_sha" ] && git cat-file -e "${previous_sha}^{commit}" 2>/dev/null; then
-              # The workflow and the notes themselves are not part of what the app
-              # changed, so they stay out of the summary.
-              git diff --stat "${previous_sha}..${GITHUB_SHA}" -- app asteriskd buildSrc \
-                ':(exclude).github' ':(exclude)PROGRESS.md' | tail -n 30
+              git diff --stat "${previous_sha}..${GITHUB_SHA}" | tail -n 30
             else
-              git show --stat --oneline HEAD -- app asteriskd buildSrc | tail -n 30
+              git show --stat --oneline HEAD | tail -n 30
             fi
           } > release-notes.md
 
