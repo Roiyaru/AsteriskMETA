@@ -188,6 +188,8 @@
     <string name="monitor_dns_filter_nxdomain">NXDOMAIN</string>
     <string name="monitor_dns_filter_other">其他</string>
     <string name="monitor_dns_no_match">无匹配请求</string>
+    <string name="monitor_dns_route_direct">直连</string>
+    <string name="monitor_dns_route_proxy">代理</string>
     <string name="monitor_dns_search">搜索 DNS 请求</string>
     <string name="monitor_dns_total">请求数量</string>
     <string name="monitor_rules_unknown_hit">最后命中未知</string>

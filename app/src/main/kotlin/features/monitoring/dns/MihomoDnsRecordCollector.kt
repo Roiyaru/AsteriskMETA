@@ -42,7 +42,7 @@ internal class MihomoDnsRecordCollector(
      * The core restarts on every profile change, so the stream reconnects instead of
      * ending the collection.
      */
-    suspend fun collect(control: MihomoControlConfig) {
+    suspend fun collect(control: MihomoControlConfig, routeResolver: MihomoDnsRouteResolver) {
         restorePreviousRecords()
         while (currentCoroutineContext().isActive) {
             try {
@@ -52,7 +52,7 @@ internal class MihomoDnsRecordCollector(
                 controlClient.streamLogs(control, DnsLogLevel).collect { record ->
                     val parsed = parser.parse(record.message)
                     if (parsed.isEmpty()) return@collect
-                    publish(parsed)
+                    publish(parsed.map { it.copy(route = routeResolver.resolve(it.upstream)) })
                 }
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error

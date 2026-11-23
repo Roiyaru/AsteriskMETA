@@ -20,6 +20,7 @@ import engine.proxy.toLocalProxyOptions
 import engine.proxy.toLocalProxyOptionsOrNull
 import features.logs.AndroidAppLogger
 import features.monitoring.dns.MihomoDnsRecordCollector
+import features.monitoring.dns.MihomoDnsRouteResolver
 import features.monitoring.network.AddressFamily
 import features.monitoring.network.AndroidNetworkMonitor
 import features.monitoring.network.PublicNetworkProbeClient
@@ -223,6 +224,11 @@ internal class MonitoringRepository(
                     }
                     return@collectLatest
                 }
+                val appState = stateStore.state.value
+                val routeResolver = MihomoDnsRouteResolver(
+                    proxyNameservers = appState.dnsProxyServerNameserver,
+                    directNameservers = appState.dnsNameserver + appState.dnsFallback,
+                )
                 coroutineScope {
                     launch {
                         dnsRecordCollector.records.collect { records ->
@@ -236,7 +242,7 @@ internal class MonitoringRepository(
                             }
                         }
                     }
-                    dnsRecordCollector.collect(control)
+                    dnsRecordCollector.collect(control, routeResolver)
                 }
             }
     }

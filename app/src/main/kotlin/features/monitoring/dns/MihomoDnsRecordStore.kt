@@ -5,6 +5,7 @@ package features.monitoring.dns
 
 import android.content.Context
 import engine.mihomo.runtime.MihomoDnsRecord
+import engine.mihomo.runtime.MihomoDnsRoute
 import features.logs.AndroidAppLogger
 import java.io.File
 
@@ -79,6 +80,7 @@ private fun MihomoDnsRecord.encode(): String = listOf(
     elapsedMillis?.toString().orEmpty(),
     cached.toString(),
     failed.toString(),
+    route.name,
 ).joinToString("|")
 
 private fun decode(line: String): MihomoDnsRecord? {
@@ -96,6 +98,9 @@ private fun decode(line: String): MihomoDnsRecord? {
         elapsedMillis = parts[5].toLongOrNull(),
         cached = parts[6].toBoolean(),
         failed = parts[7].toBoolean(),
+        route = parts.getOrNull(8)
+            ?.let { name -> MihomoDnsRoute.entries.firstOrNull { it.name == name } }
+            ?: MihomoDnsRoute.Unknown,
     )
 }
 

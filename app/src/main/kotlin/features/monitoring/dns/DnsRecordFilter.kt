@@ -4,6 +4,7 @@
 package features.monitoring.dns
 
 import engine.mihomo.runtime.MihomoDnsRecord
+import engine.mihomo.runtime.MihomoDnsRoute
 
 /**
  * The filters the DNS monitor offers.
@@ -18,6 +19,8 @@ internal enum class DnsRecordFilter {
     Other,
     Cached,
     Failed,
+    Proxy,
+    Direct,
 }
 
 /** Whether the record passes the selected filters. */
@@ -31,6 +34,8 @@ internal fun MihomoDnsRecord.matchesDnsFilters(filters: Set<DnsRecordFilter>): B
             DnsRecordFilter.Other -> !matchesKnownType()
             DnsRecordFilter.Cached -> cached
             DnsRecordFilter.Failed -> failed
+            DnsRecordFilter.Proxy -> route == MihomoDnsRoute.Proxy
+            DnsRecordFilter.Direct -> route == MihomoDnsRoute.Direct
         }
     }
 }

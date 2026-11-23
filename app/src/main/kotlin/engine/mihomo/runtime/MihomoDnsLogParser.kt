@@ -21,6 +21,8 @@ internal data class MihomoDnsRecord(
     val addresses: List<String> = emptyList(),
     /** The upstream server the core asked, for example `https://dns.google/dns-query`. */
     val upstream: String = "",
+    /** Whether the upstream was reached through the proxy or directly. */
+    val route: MihomoDnsRoute = MihomoDnsRoute.Unknown,
     /** How long the core waited for the upstream answer. */
     val elapsedMillis: Long? = null,
     /** Whether the core answered the lookup from its own DNS cache. */
@@ -28,6 +30,18 @@ internal data class MihomoDnsRecord(
     /** Whether the lookup was rejected, for example with `NXDOMAIN`. */
     val failed: Boolean = false,
 )
+
+/** How the core reached the upstream server. */
+internal enum class MihomoDnsRoute {
+    /** The upstream was reached through the proxy. */
+    Proxy,
+
+    /** The upstream was reached directly. */
+    Direct,
+
+    /** The upstream does not belong to a known group. */
+    Unknown,
+}
 
 /**
  * Parses the `[DNS]` lines the core writes to its debug log stream.

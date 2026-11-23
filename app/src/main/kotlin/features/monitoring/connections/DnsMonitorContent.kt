@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.R
 import engine.mihomo.runtime.MihomoDnsRecord
+import engine.mihomo.runtime.MihomoDnsRoute
 import features.monitoring.ConnectionMonitorStatus
 import features.monitoring.dns.DnsRecordFilter
 import ui.components.AsteriskChipTone
@@ -189,6 +190,16 @@ private fun DnsRecordCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 AsteriskInfoChip(text = record.recordType)
+                when (record.route) {
+                    MihomoDnsRoute.Proxy -> AsteriskInfoChip(
+                        text = stringResource(R.string.monitor_dns_route_proxy),
+                        tone = AsteriskChipTone.Secondary,
+                    )
+                    MihomoDnsRoute.Direct -> AsteriskInfoChip(
+                        text = stringResource(R.string.monitor_dns_route_direct),
+                    )
+                    MihomoDnsRoute.Unknown -> Unit
+                }
                 if (record.cached) {
                     AsteriskInfoChip(text = stringResource(R.string.monitor_dns_cached))
                 }
@@ -248,4 +259,6 @@ internal fun dnsFilterLabel(filter: DnsRecordFilter): String = when (filter) {
     DnsRecordFilter.Other -> stringResource(R.string.monitor_dns_filter_other)
     DnsRecordFilter.Cached -> stringResource(R.string.monitor_dns_cached)
     DnsRecordFilter.Failed -> stringResource(R.string.monitor_dns_filter_nxdomain)
+    DnsRecordFilter.Proxy -> stringResource(R.string.monitor_dns_route_proxy)
+    DnsRecordFilter.Direct -> stringResource(R.string.monitor_dns_route_direct)
 }
