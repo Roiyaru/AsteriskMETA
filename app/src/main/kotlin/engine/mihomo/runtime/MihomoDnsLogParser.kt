@@ -33,6 +33,8 @@ internal data class MihomoDnsRecord(
     val failed: Boolean = false,
     /** The app the query was made for, empty when the app is not known yet. */
     val app: String = "",
+    /** The package of that app, empty when the app is not known yet. */
+    val appPackage: String = "",
 )
 
 /** How the core reached the upstream server. */
@@ -65,6 +67,9 @@ internal class MihomoDnsLogParser(
 
     /** The app each host belongs to, learned from the core's process notices. */
     private val appByHost = LinkedHashMap<String, String>()
+
+    /** The package behind each host, which loads the app's icon. */
+    private val appPackageByHost = LinkedHashMap<String, String>()
 
     /** Whether a process notice arrived since the records were enriched last. */
     var hasUnreadApps = false
@@ -108,7 +113,11 @@ internal class MihomoDnsLogParser(
     fun enrichApps(records: List<MihomoDnsRecord>): List<MihomoDnsRecord> {
         if (!hasUnreadApps) return records
         val enriched = records.map { record ->
-            if (record.app.isEmpty()) record.copy(app = appFor(record)) else record
+            when {
+                record.app.isEmpty() -> record.copy(app = appFor(record), appPackage = appPackageFor(record))
+                record.appPackage.isEmpty() -> record.copy(appPackage = appPackageFor(record))
+                else -> record
+            }
         }
         hasUnreadApps = false
         return enriched
@@ -118,6 +127,13 @@ internal class MihomoDnsLogParser(
     internal fun appFor(record: MihomoDnsRecord): String {
         appByHost[record.domain]?.let { name -> return name }
         record.addresses.firstNotNullOfOrNull { address -> appByHost[address] }?.let { name -> return name }
+        return ""
+    }
+
+    /** The package of the app the lookup was made for, which loads the icon. */
+    internal fun appPackageFor(record: MihomoDnsRecord): String {
+        appPackageByHost[record.domain]?.let { name -> return name }
+        record.addresses.firstNotNullOfOrNull { address -> appPackageByHost[address] }?.let { name -> return name }
         return ""
     }
 
@@ -142,6 +158,7 @@ internal class MihomoDnsLogParser(
         if (host.isEmpty() || app.isEmpty()) return
         val name = if (app == selfPackage) SelfAppName else app
         if (appByHost.put(host, name) == null) hasUnreadApps = true
+        appPackageByHost[host] = app
     }
 
     private fun hostWithoutPort(host: String): String = when {

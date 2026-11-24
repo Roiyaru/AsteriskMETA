@@ -802,7 +802,7 @@ private fun ConnectionAppGroupCard(
 }
 
 @Composable
-private fun ConnectionAppIcon(
+internal fun ConnectionAppIcon(
     packageName: String?,
     label: String,
     iconSizePx: Int,

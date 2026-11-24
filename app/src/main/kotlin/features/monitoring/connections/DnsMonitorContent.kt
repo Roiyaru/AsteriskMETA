@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -51,6 +52,7 @@ import ui.icons.AsteriskIcons as Icons
 import ui.layout.LocalAdaptiveWindow
 import ui.layout.pageListPadding
 import ui.layout.pageReadableWidth
+import system.ANDROID_APP_ICON_SIZE_DP
 import ui.layout.rememberPageGutter
 import ui.theme.AsteriskShapeTokens
 import java.text.SimpleDateFormat
@@ -82,6 +84,7 @@ internal fun DnsMonitorContent(
 ) {
     val gutter = rememberPageGutter()
     val timeStyle = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+    val iconSizePx = with(LocalDensity.current) { ANDROID_APP_ICON_SIZE_DP.dp.roundToPx() }
     var detailRecord by remember { mutableStateOf<MihomoDnsRecord?>(null) }
     val visibleRecords = remember(filteredRecords, selectedUpstream) {
         val narrowed = if (selectedUpstream == null) {
@@ -152,6 +155,7 @@ internal fun DnsMonitorContent(
                             timeStyle,
                             selectedUpstream,
                             onUpstreamSelect,
+                            iconSizePx,
                             modifier = Modifier.weight(1f),
                             onDetail = { detailRecord = visibleRecords[first] },
                         )
@@ -164,6 +168,7 @@ internal fun DnsMonitorContent(
                                 timeStyle,
                                 selectedUpstream,
                                 onUpstreamSelect,
+                                iconSizePx,
                                 modifier = Modifier.weight(1f),
                                 onDetail = { detailRecord = next },
                             )
@@ -179,6 +184,7 @@ internal fun DnsMonitorContent(
                         timeStyle,
                         selectedUpstream,
                         onUpstreamSelect,
+                        iconSizePx,
                         modifier = Modifier.fillMaxWidth(),
                         onDetail = { detailRecord = record },
                     )
@@ -374,6 +380,7 @@ private fun DnsRecordCard(
     timeStyle: SimpleDateFormat,
     selectedUpstream: String?,
     onUpstreamSelect: (String?) -> Unit,
+    iconSizePx: Int,
     modifier: Modifier = Modifier,
     onDetail: () -> Unit = {},
 ) {
@@ -382,107 +389,118 @@ private fun DnsRecordCard(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         onClick = onDetail,
     ) {
-        Column(
+        Row(
             modifier = Modifier.fillMaxWidth().padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = timeStyle.format(Date(record.timestampMillis)),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                AsteriskInfoChip(text = record.recordType)
-                if (record.cached) {
-                    AsteriskInfoChip(text = stringResource(R.string.monitor_dns_cached))
-                }
-                if (record.failed) {
-                    AsteriskInfoChip(
-                        text = stringResource(R.string.monitor_dns_failed),
-                        tone = AsteriskChipTone.Error,
-                    )
-                }
-            }
-            Text(
-                text = record.domain,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            // The app the lookup was made for, which reads like the app groups above.
+            ConnectionAppIcon(
+                packageName = record.appPackage.takeIf(String::isNotBlank),
+                label = record.app.ifBlank { stringResource(R.string.monitor_connections_unknown_source) },
+                iconSizePx = iconSizePx,
             )
-            if (record.addresses.isNotEmpty()) {
-                Text(
-                    text = record.addresses.joinToString(", "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (record.upstream.isNotBlank() || record.route != MihomoDnsRoute.Unknown) {
-                // The route sits next to the upstream, because together they say where
-                // the lookup went: the server and the way the core reached it.
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (record.upstream.isNotBlank()) {
-                        // The upstream answers through one block: tapping it narrows the
-                        // list to the lookups that went through this server, and tapping
-                        // it again brings the whole list back.
-                        val selected = record.upstream == selectedUpstream
-                        Surface(
-                            onClick = { onUpstreamSelect(if (selected) null else record.upstream) },
-                            shape = AsteriskShapeTokens.SmallContainer,
-                            color = if (selected) MaterialTheme.colorScheme.secondaryContainer
-                            else MaterialTheme.colorScheme.surfaceContainerHighest,
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
+                    Text(
+                        text = timeStyle.format(Date(record.timestampMillis)),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    AsteriskInfoChip(text = record.recordType)
+                    if (record.cached) {
+                        AsteriskInfoChip(text = stringResource(R.string.monitor_dns_cached))
+                    }
+                    if (record.failed) {
+                        AsteriskInfoChip(
+                            text = stringResource(R.string.monitor_dns_failed),
+                            tone = AsteriskChipTone.Error,
+                        )
+                    }
+                }
+                Text(
+                    text = record.domain,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (record.addresses.isNotEmpty()) {
+                    Text(
+                        text = record.addresses.joinToString(", "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (record.upstream.isNotBlank() || record.route != MihomoDnsRoute.Unknown) {
+                    // The route sits next to the upstream, because together they say where
+                    // the lookup went: the server and the way the core reached it.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (record.upstream.isNotBlank()) {
+                            // The upstream answers through one block: tapping it narrows the
+                            // list to the lookups that went through this server, and tapping
+                            // it again brings the whole list back.
+                            val selected = record.upstream == selectedUpstream
+                            Surface(
+                                onClick = { onUpstreamSelect(if (selected) null else record.upstream) },
+                                shape = AsteriskShapeTokens.SmallContainer,
+                                color = if (selected) MaterialTheme.colorScheme.secondaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHighest,
                             ) {
-                                Text(
-                                    text = dnsUpstreamDisplay(record.upstream),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                if (selected) {
-                                    Icon(
-                                        Icons.Rounded.Clear,
-                                        contentDescription = stringResource(R.string.monitor_dns_filter_clear),
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = dnsUpstreamDisplay(record.upstream),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                     )
+                                    if (selected) {
+                                        Icon(
+                                            Icons.Rounded.Clear,
+                                            contentDescription = stringResource(R.string.monitor_dns_filter_clear),
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    when (record.route) {
-                        MihomoDnsRoute.Proxy -> AsteriskInfoChip(
-                            text = stringResource(R.string.monitor_dns_route_proxy),
-                            tone = AsteriskChipTone.Secondary,
-                        )
-                        MihomoDnsRoute.Direct -> AsteriskInfoChip(
-                            text = stringResource(R.string.monitor_dns_route_direct),
-                        )
-                        MihomoDnsRoute.Unknown -> Unit
+                        when (record.route) {
+                            MihomoDnsRoute.Proxy -> AsteriskInfoChip(
+                                text = stringResource(R.string.monitor_dns_route_proxy),
+                                tone = AsteriskChipTone.Secondary,
+                            )
+                            MihomoDnsRoute.Direct -> AsteriskInfoChip(
+                                text = stringResource(R.string.monitor_dns_route_direct),
+                            )
+                            MihomoDnsRoute.Unknown -> Unit
+                        }
                     }
                 }
-            }
-            record.elapsedMillis?.let { elapsed ->
-                Text(
-                    text = stringResource(R.string.monitor_dns_elapsed, elapsed),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                record.elapsedMillis?.let { elapsed ->
+                    Text(
+                        text = stringResource(R.string.monitor_dns_elapsed, elapsed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

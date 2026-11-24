@@ -54,7 +54,7 @@ internal class MihomoDnsRecordCollector(
                 controlClient.streamLogs(control, DnsLogLevel).collect { record ->
                     val parsed = parser.parse(record.message)
                     if (parsed.isNotEmpty()) {
-                        publish(parsed.map { it.copy(route = routeResolver.resolve(it.upstream)) })
+                        publish(parsed, routeResolver)
                     } else if (parser.hasUnreadApps) {
                         // The core names the app of a connection a moment after the lookup
                         // it needed, so the records read their app as the notices arrive.
@@ -78,19 +78,36 @@ internal class MihomoDnsRecordCollector(
         mutableRecords.value = emptyList()
     }
 
-    private fun publish(records: List<MihomoDnsRecord>) {
+    private fun publish(
+        records: List<MihomoDnsRecord>,
+        routeResolver: MihomoDnsRouteResolver,
+    ) {
+        val prepared = records.map { record ->
+            // A cache hit never names an upstream, so it reads the server that answered
+            // the same name most recently, which is where its cached entry came from.
+            val upstream = record.upstream.ifEmpty {
+                if (record.cached) lastUpstreamByDomain[record.domain].orEmpty() else ""
+            }
+            if (!record.cached && record.upstream.isNotBlank()) {
+                lastUpstreamByDomain[record.domain] = record.upstream
+            }
+            record.copy(
+                id = idCounter.getAndIncrement(),
+                upstream = upstream,
+                route = routeResolver.resolve(upstream),
+                app = record.app.ifEmpty { parserOfSession?.appFor(record).orEmpty() },
+                appPackage = record.appPackage.ifEmpty { parserOfSession?.appPackageFor(record).orEmpty() },
+            )
+        }
         // The core answers the same lookup through several upstreams at once, so the
         // records from one burst can share a timestamp, a name and a type. The list
         // keys its rows by the id, so every record gets one before it is shown.
-        val identified = records.map {
-            it.copy(
-                id = idCounter.getAndIncrement(),
-                app = it.app.ifEmpty { parserOfSession?.appFor(it).orEmpty() },
-            )
-        }
-        val merged = (mutableRecords.value + identified).takeLast(MaxRecords)
+        val merged = (mutableRecords.value + prepared).takeLast(MaxRecords)
         mutableRecords.value = merged
     }
+
+    /** The upstream that answered each name most recently, which the cache hits read. */
+    private val lastUpstreamByDomain = LinkedHashMap<String, String>()
 
     /** The parser of the running session, which holds the app notices. */
     private var parserOfSession: MihomoDnsLogParser? = null
