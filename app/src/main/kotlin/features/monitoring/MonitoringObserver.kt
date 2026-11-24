@@ -30,7 +30,6 @@ internal data class MonitoringPlan(
     val recordResourceHistory: Boolean = false,
     val refreshLocalNetworkOnEnter: Boolean = false,
     val networkPageVisible: Boolean = false,
-    val collectDnsRecords: Boolean = false,
 )
 
 internal fun resolveMonitoringPlan(counts: Map<MonitoringIntent, Int>): MonitoringPlan {
@@ -42,8 +41,7 @@ internal fun resolveMonitoringPlan(counts: Map<MonitoringIntent, Int>): Monitori
     val traffic = observes(MonitoringIntent.Traffic)
     val network = observes(MonitoringIntent.Network)
     val rules = observes(MonitoringIntent.Rules)
-    val dns = observes(MonitoringIntent.Dns)
-    val any = home || connections || rules || dns || resource || traffic || network
+    val any = home || connections || rules || resource || traffic || network
 
     return MonitoringPlan(
         observeRuntimeSummary = any,
@@ -69,7 +67,6 @@ internal fun resolveMonitoringPlan(counts: Map<MonitoringIntent, Int>): Monitori
         recordResourceHistory = resource,
         refreshLocalNetworkOnEnter = home && !network,
         networkPageVisible = network,
-        collectDnsRecords = dns,
     )
 }
 

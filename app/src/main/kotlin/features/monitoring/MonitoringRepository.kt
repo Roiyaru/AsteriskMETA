@@ -102,6 +102,10 @@ internal class MonitoringRepository(
     val state: StateFlow<MonitoringState> = mutableState.asStateFlow()
 
     init {
+        // The DNS collector follows the core's session on its own, independent of which
+        // page is on screen, so the records accumulate from the moment the proxy starts
+        // and survive the page navigations that restart the observer plan.
+        appScope.launch { collectDnsRecords() }
         appScope.launch {
             observerCounts
                 .map(::resolveMonitoringPlan)
@@ -135,15 +139,6 @@ internal class MonitoringRepository(
                         }
                         plan.trafficIntervalMillis?.let { interval ->
                             launch { collectTrafficStats(interval) }
-                        }
-                        if (plan.collectDnsRecords) {
-                            launch {
-                                try {
-                                    collectDnsRecords()
-                                } finally {
-                                    mutableState.update { it.copy(dns = MonitoringDnsSummary()) }
-                                }
-                            }
                         }
                     }
                 }
