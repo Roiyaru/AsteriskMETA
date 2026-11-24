@@ -65,9 +65,9 @@ internal class MihomoDnsRecordCollector(
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 currentCoroutineContext().ensureActive()
-                if (error !is IOException) {
-                    AndroidAppLogger.warn(LogTag, "Failed to collect DNS records", error)
-                }
+                // Every failed attempt logs, because a silent reconnect loop would leave
+                // the monitor empty with nothing to explain it.
+                AndroidAppLogger.warn(LogTag, "Failed to collect DNS records", error)
             }
             delay(StreamReconnectDelayMillis)
         }

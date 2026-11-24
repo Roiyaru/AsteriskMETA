@@ -979,7 +979,21 @@ internal class MihomoRuntimeRepository(
      * rest of the runtime uses.
      */
     fun resolveDnsControlConfig(appState: AppState): Result<MihomoControlConfig> = runCatching {
-        resolveMihomoControlConfig(appState)
+        // The DNS monitor talks to the same endpoint the log bridge uses, which reads
+        // the session override of the running core instead of recomputing the control
+        // from the settings, so both streams follow the core wherever it listens.
+        if (appState.usesRawMihomoConfig()) {
+            require(appState.proxyRunning) { "Raw configuration API is available only while the proxy service is running" }
+            val controller = appContext.loadSelectedRawConfig(appState)?.snapshot?.controller
+                ?: error("Raw configuration is not available")
+            val override = controller.vpnSessionOverride(appContext.mihomoControllerSocket())
+            MihomoControlConfig(
+                secret = override.secret.orEmpty(),
+                unixSocketPath = override.externalControllerUnix,
+            )
+        } else {
+            appState.mihomoControlConfig(appContext)
+        }
     }
 
     private fun resolveMihomoControlConfig(appState: AppState): MihomoControlConfig {
