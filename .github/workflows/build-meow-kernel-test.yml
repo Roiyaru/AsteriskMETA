@@ -194,14 +194,15 @@ jobs:
 
       - name: Upload build logs on failure
         if: failure()
-        uses: softprops/action-gh-release@v2
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ci-logs-meow
-          name: Meow kernel CI build logs
-          files: |
+          name: meow-kernel-build-logs
+          path: |
             build.log
             ${{ runner.temp }}/kernel.log
-          body_path: compile-errors.md
+            compile-errors.md
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Sign the arm64-v8a APK
         shell: bash
