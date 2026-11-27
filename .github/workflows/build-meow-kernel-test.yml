@@ -23,11 +23,12 @@ concurrency:
 
 env:
   # Patched meow-rs revision (fancy-regex look-around support for
-  # filter/exclude-filter) and the AAR version string this build installs
-  # into the local ivy repository.
+  # filter/exclude-filter, share-link provider payloads, provider override
+  # field set) and the AAR version string this build installs into the local
+  # ivy repository.
   MEOW_REPOSITORY: https://github.com/Roiyaru/meow-rs
-  MEOW_REVISION: 4754137b0ff4d4004a67fbede24e0b7e40e35490
-  KERNEL_VERSION: meow-lookaround-1
+  MEOW_REVISION: 3c343c6773c737ecb9426677d8ec507c1f843372
+  KERNEL_VERSION: meow-parity-0.30-1
 
 jobs:
   build:
@@ -254,8 +255,10 @@ jobs:
           {
             echo "AsteriskMETA meow 内核测试包（基于上游 \`${GITHUB_SHA:0:8}\` 构建，应用源码与上游一致）。"
             echo ""
-            echo "- 核心：meow（Rust），源码修订 \`${MEOW_REVISION:0:8}\`（\`fix/provider-filter-lookaround-0.30\`：v0.30.0 基线 + 本次修复）"
-            echo "- 修复内容：\`proxy-providers\` / \`proxy-groups\` 的 \`filter\` / \`exclude-filter\` 改用 fancy-regex，支持 mihomo 风格的负向前瞻 \`(?!...)\`"
+            echo "- 核心：meow（Rust），源码修订 \`${MEOW_REVISION:0:8}\`（\`test/provider-parity-0.30\`：v0.30.0 基线 + 三项 provider 修复）"
+            echo "- 修复 1：\`proxy-providers\` / \`proxy-groups\` 的 \`filter\` / \`exclude-filter\` 改用 fancy-regex，支持 mihomo 风格的负向前瞻 \`(?!...)\`"
+            echo "- 修复 2：provider 载荷支持 base64 分享链接列表（\`ss://\` / \`vmess://\` / \`vless://\` / \`trojan://\` / \`hysteria2://\` / \`anytls://\`），即订阅按 UA 返回 URI 列表时不再解析出 0 节点"
+            echo "- 修复 3：实现 provider \`override\` 字段集（udp / tfo / mptcp / skip-cert-verify / up / down / name-cert-verify / interface-name / ip-version / routing-mark）与 \`additional-prefix\` / \`additional-suffix\`"
             echo "- 内核产物：\`libclash-rs.aar\`（arm64-v8a，version \`${KERNEL_VERSION}\`）"
             echo "- 包名 \`org.asterisk.zcc.ameta.dev\`（与官方包并存），测试签名与历史 test-* 一致"
             echo "- 仅提供 arm64-v8a 架构的 release 包"
@@ -265,6 +268,7 @@ jobs:
             echo "1. 导入 test1029 配置，确认不再报配置加载失败，代理页出现各订阅分组（Google / Telegram / 哔哩哔哩 等）"
             echo "2. 观察核心日志不再出现 \`absent from the registry\`"
             echo "3. 确认信息类节点（剩余流量 / 到期 / 官网 等）已被 \`filter\` 过滤掉"
+            echo "4. 检查 Car 订阅（\`sub.semitele.com\`）不再是 0 节点——该源按 UA 返回 base64 \`ss://\` 列表，本次由分享链接载荷解析兜底，无需配置侧 \`header\` 补丁"
           } > release-notes.md
           cat release-notes.md
 
