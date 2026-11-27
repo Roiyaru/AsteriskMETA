@@ -31,17 +31,26 @@
 | `feat/provider-share-link-payload` | provider 载荷支持 base64 任意字母表 + 分享链接（ss/vmess/vless/trojan/hysteria2/anytls）转节点 map；YAML 解析失败后回退 |
 | `feat/provider-override` | provider `override` 字段集（udp/tfo/mptcp/skip-cert-verify/up/down/name-cert-verify/interface-name/ip-version/routing-mark）+ `additional-prefix`/`additional-suffix`；顺序为过滤 → 字段 → 前后缀 |
 | `test/provider-parity-0.30` | 上述三项 cherry-pick 到 `8e4e9484`，供 AAR 构建（`MEOW_REVISION` 指向它） |
+| `fix/auth-empty-entry` | `authentication: [""]` 空条目按「无凭据」跳过，不再当 Class A 畸形条目硬失败；非空无冒号条目仍报错 |
 
 ### 本次构建
-- `MEOW_REVISION` = `37d32c7919ad85527b9e8c87923fd9ce4d23d75e`，`KERNEL_VERSION` = `meow-parity-0.30-1`
-- 触发：`git push origin main:meow-kernel-test`
-- 结果：run `46056760595` **success**（约 12 分钟）→ release `meow-test-9`
-- 产物：`app-arm64-v8a-release-unsigned-signed.apk`，28,148,709 B，
-  sha256 `63b7eb8187401106984b4f48c3a0cb36bda29c26da7f4998a94ded0955ca19d2`
-- 校验：包名 `org.asterisk.zcc.ameta.dev`，versionCode 628，versionName `1.3.1-merge`，
-  签名 `CN=AsteriskMETA HevFix Test`，`lib/arm64-v8a/librsjni.so` 27.4 MB；
-  二进制内含 `fancy-regex-0.16.2` 与 `no share link could be parsed` 字符串，
-  确认三项修复都进了内核。
+- `MEOW_REVISION` = `cef849e1b4d1bef91b83bcbdb2bf1b60f6f5fdcd`，`KERNEL_VERSION` = `meow-parity-0.30-1`
+- 触发：`git push origin main:meow-kernel-test` → run `46059873933` **success**（12 分 21 秒）
+- 产物：release `meow-test-10`，`app-arm64-v8a-release-unsigned-signed.apk`，28,148,709 B，
+  sha256 `793ab17947087c946d1ade42c785fa64449fd59635f0c337add782b769bd720c`
+- `librsjni.so` 哈希与 meow-test-9 不同（`e2b6483a…` vs `ebbbfc78…`），确认内核真的重建
+- 本版新增修复：`authentication: ""` 空条目不再硬失败（见下）
+
+### 上一版（meow-test-9）
+- `MEOW_REVISION` = `37d32c7919ad85527b9e8c87923fd9ce4d23d75e`，run `46056760595` success
+- 产物 sha256 `63b7eb8187401106984b4f48c3a0cb36bda29c26da7f4998a94ded0955ca19d2`
+- 真机结果：Car 与 Sntp 订阅成功加载（分享链接解析生效），但首次导入报
+  `authentication: malformed entry ""`，配置列表为空；开代理后强制刷新才正常
+
+### 已知未修（非阻断）
+- provider `override.skip-cert-verify` 会写到每个成员节点上，`ss` 类型不认该键，
+  校验层逐节点报 `unknown keys in proxy … skip-cert-verify`。功能不受影响（节点仍加载），
+  mihomo 同样写入但静默忽略。彻底消除需要「类型 → 支持键」表，属独立改动。
 
 #### 失败记录（已修，勿重复踩）
 1. run `46053584358` / `46054734547` / `46055649424` 连续失败：真实原因是 `provider_payload.rs:395`
