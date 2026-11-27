@@ -38,7 +38,14 @@ dependencyResolutionManagement {
             forRepository {
                 ivy {
                     name = "AndroidLibClashLiteGitHubRelease"
-                    url = uri("https://github.com/Asterisk4Magisk/AndroidLibClashLite/releases/download")
+                    // A test build can point the same layout at a locally built
+                    // AAR (`<dir>/<revision>/libclash-rs.aar`) instead of the
+                    // published GitHub release; unset, it resolves upstream's.
+                    url = uri(
+                        providers.gradleProperty("kernelRepoDir").getOrElse(
+                            "https://github.com/Asterisk4Magisk/AndroidLibClashLite/releases/download",
+                        ),
+                    )
                     patternLayout { artifact("[revision]/[artifact].[ext]") }
                     metadataSources { artifact() }
                 }

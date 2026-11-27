@@ -1,0 +1,294 @@
+name: Build Meow Kernel Test APK
+
+# Builds a test APK that differs from upstream only in its core: the meow
+# (Rust) kernel is compiled from a patched meow revision that accepts
+# look-around assertions in proxy-provider/proxy-group filters, the way
+# mihomo does.
+#
+# The kernel sources and packaging come from AndroidLibClashLite's scripts
+# (prepare, Android patches, JNI AAR packaging); only the pinned meow
+# revision differs. The application sources are upstream's.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [meow-kernel-test]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: meow-kernel-test-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Patched meow-rs revision (fancy-regex look-around support for
+  # filter/exclude-filter) and the AAR version string this build installs
+  # into the local ivy repository.
+  MEOW_REPOSITORY: https://github.com/Roiyaru/meow-rs
+  MEOW_REVISION: 4754137b0ff4d4004a67fbede24e0b7e40e35490
+  KERNEL_VERSION: meow-lookaround-1
+
+jobs:
+  build:
+    name: Build meow kernel test APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Prepare the tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Present even when an earlier step fails, so the failure upload always
+          # has a build log to attach.
+          : > build.log
+          chmod +x gradlew
+          # Build-time identity only: the test package installs beside the
+          # official one and updates over previous test builds under the test
+          # signature.
+          file=buildSrc/src/main/kotlin/BuildConfig.kt
+          sed -i 's|const val PACKAGE_NAME = "org.asterisk.zcc.ameta"|const val PACKAGE_NAME = "org.asterisk.zcc.ameta.dev"|' "$file"
+          sed -i 's|const val VERSION_NAME = "\(.*\)-dev"|const val VERSION_NAME = "\1-merge"|' "$file"
+          grep -nE "VERSION_NAME|PACKAGE_NAME" "$file" | head -3
+
+      - name: Set up JDK 21 for the kernel bindings
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          licenses_status="${PIPESTATUS[1]}"
+          set -o pipefail
+          if [ "$licenses_status" -ne 0 ]; then
+            echo "::error::Failed to accept Android SDK licenses."
+            exit "$licenses_status"
+          fi
+
+          target_sdk="$(sed -n 's/^[[:space:]]*const val TARGET_SDK = \([0-9]\+\).*/\1/p' buildSrc/src/main/kotlin/BuildConfig.kt | head -n 1)"
+          target_sdk_minor="$(sed -n 's/^[[:space:]]*const val TARGET_SDK_MINOR = \([0-9]\+\).*/\1/p' buildSrc/src/main/kotlin/BuildConfig.kt | head -n 1)"
+          build_tools_version="$(sed -n 's/^[[:space:]]*const val BUILD_TOOLS_VERSION = "\([^"]\+\)".*/\1/p' buildSrc/src/main/kotlin/BuildConfig.kt | head -n 1)"
+          ndk_version="$(sed -n 's/^[[:space:]]*const val NDK_VERSION = "\([^"]\+\)".*/\1/p' buildSrc/src/main/kotlin/BuildConfig.kt | head -n 1)"
+          if [ -z "$target_sdk" ] || [ -z "$target_sdk_minor" ] || [ -z "$build_tools_version" ] || [ -z "$ndk_version" ]; then
+            echo "::error::Unable to read the SDK versions from ProjectConfig."
+            exit 1
+          fi
+
+          # build_android.py compiles the bindings against this exact platform
+          # and d8, so both are pinned by ProjectConfig rather than "latest".
+          sdkmanager --install \
+            "platforms;android-${target_sdk}.0" \
+            "build-tools;${build_tools_version}" \
+            "ndk;${ndk_version}" \
+            "cmake;3.22.1"
+
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${ndk_version}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/${ndk_version}" >> "$GITHUB_ENV"
+
+      - name: Build meow kernel (libclash-rs.aar, arm64-v8a)
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+          set -x
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libclang-dev clang
+
+          git clone --depth 1 https://github.com/Asterisk4Magisk/AndroidLibClashLite "$RUNNER_TEMP/kernel"
+
+          python3 - <<'PY'
+          import json, os, pathlib
+          pin_path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'kernel/rust/upstream.json'
+          pin = json.loads(pin_path.read_text())
+          pin['repository'] = os.environ['MEOW_REPOSITORY']
+          pin['revision'] = os.environ['MEOW_REVISION']
+          pin_path.write_text(json.dumps(pin, indent=2))
+          print(pin)
+          PY
+
+          toolchain="$(python3 -c "import tomllib,pathlib,os;print(tomllib.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'kernel/rust/rust-toolchain.toml').read_text())['toolchain']['channel'])")"
+          rustup toolchain install "$toolchain" --profile minimal
+          rustup target add --toolchain "$toolchain" aarch64-linux-android
+
+          cd "$RUNNER_TEMP/kernel"
+          python3 scripts/prepare_rust.py
+
+          # The wrapper's rust/Cargo.lock predates the patched meow tree, which
+          # now carries an extra dependency. Resolve it once so every
+          # `cargo build --locked` inside build_rust.py stays pinned.
+          (cd rust && cargo metadata --format-version 1 > /dev/null)
+
+          python3 scripts/build_rust.py --arch arm64 --output "$RUNNER_TEMP/libclash-rs.aar"
+          } 2>&1 | tee "$RUNNER_TEMP/kernel.log"
+
+      - name: Install the kernel into the local ivy repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          # AndroidLibClashLiteGitHubRelease resolves [revision]/[artifact].[ext]
+          # from the URL given by -PkernelRepoDir, so a directory with the same
+          # layout stands in for the GitHub release of the stock AAR.
+          repo_dir="$GITHUB_WORKSPACE/build/kernel-repo"
+          mkdir -p "${repo_dir}/${KERNEL_VERSION}"
+          cp "$RUNNER_TEMP/libclash-rs.aar" "${repo_dir}/${KERNEL_VERSION}/libclash-rs.aar"
+          ls -l "${repo_dir}/${KERNEL_VERSION}"
+
+          # The dependency version is a ProjectConfig constant; point it at the
+          # local AAR for this build only.
+          sed -i "s|\\(const val ANDROID_LIB_CLASH_LITE_VERSION = \"\\).*\\(\"\\)|\\1${KERNEL_VERSION}\\2|" \
+            buildSrc/src/main/kotlin/BuildConfig.kt
+          grep -n "ANDROID_LIB_CLASH_LITE_VERSION" buildSrc/src/main/kotlin/BuildConfig.kt
+
+      - name: Set up JDK 26
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "26"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build release APK
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon :app:assembleRelease \
+            -Pcore=meow \
+            -PkernelRepoDir="$GITHUB_WORKSPACE/build/kernel-repo" 2>&1 | tee build.log
+
+      - name: Report compile errors
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "### Compile errors"
+            echo ""
+            echo '```'
+            grep -hE "^e: |error: |Compilation error|Caused by" build.log "$RUNNER_TEMP/kernel.log" 2>/dev/null | head -80 || true
+            echo '```'
+            echo ""
+            echo "### Kernel log tail"
+            echo ""
+            echo '```'
+            tail -n 60 "$RUNNER_TEMP/kernel.log" 2>/dev/null || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY" > compile-errors.md
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-logs-meow
+          name: Meow kernel CI build logs
+          files: |
+            build.log
+            ${{ runner.temp }}/kernel.log
+          body_path: compile-errors.md
+
+      - name: Sign the arm64-v8a APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          openssl pkcs12 -export \
+            -out "$RUNNER_TEMP/test.p12" \
+            -inkey signing/key.pem \
+            -in signing/cert.pem \
+            -name testkey \
+            -passout pass:androidtest
+
+          zipalign="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$zipalign" ] || [ -z "$apksigner" ]; then
+            echo "::error::zipalign/apksigner not found."
+            exit 1
+          fi
+
+          mkdir -p signed-apks
+          shopt -s nullglob
+          # The bundled kernel carries arm64-v8a only, so the other splits are
+          # left unpublished.
+          for apk in app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk; do
+            base_name="$(basename "$apk" .apk)"
+            aligned_apk="$RUNNER_TEMP/${base_name}-aligned.apk"
+            signed_apk="signed-apks/${base_name}-signed.apk"
+            "$zipalign" -f -p 4 "$apk" "$aligned_apk"
+            "$apksigner" sign \
+              --ks "$RUNNER_TEMP/test.p12" \
+              --ks-pass pass:androidtest \
+              --ks-key-alias testkey \
+              --key-pass pass:androidtest \
+              --out "$signed_apk" \
+              "$aligned_apk"
+            "$apksigner" verify "$signed_apk"
+          done
+          ls -la signed-apks
+          shopt -s nullglob
+          apks=(signed-apks/*.apk)
+          if [ ${#apks[@]} -ne 1 ]; then
+            echo "::error::Expected exactly one signed arm64-v8a APK, found ${#apks[@]}"
+            exit 1
+          fi
+
+      - name: Generate release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "AsteriskMETA meow 内核测试包（基于上游 \`${GITHUB_SHA:0:8}\` 构建，应用源码与上游一致）。"
+            echo ""
+            echo "- 核心：meow（Rust），源码修订 \`${MEOW_REVISION:0:8}\`（\`fix/provider-filter-lookaround-0.30\`：v0.30.0 基线 + 本次修复）"
+            echo "- 修复内容：\`proxy-providers\` / \`proxy-groups\` 的 \`filter\` / \`exclude-filter\` 改用 fancy-regex，支持 mihomo 风格的负向前瞻 \`(?!...)\`"
+            echo "- 内核产物：\`libclash-rs.aar\`（arm64-v8a，version \`${KERNEL_VERSION}\`）"
+            echo "- 包名 \`org.asterisk.zcc.ameta.dev\`（与官方包并存），测试签名与历史 test-* 一致"
+            echo "- 仅提供 arm64-v8a 架构的 release 包"
+            echo ""
+            echo "### 验证建议"
+            echo ""
+            echo "1. 导入 test1029 配置，确认不再报配置加载失败，代理页出现各订阅分组（Google / Telegram / 哔哩哔哩 等）"
+            echo "2. 观察核心日志不再出现 \`absent from the registry\`"
+            echo "3. 确认信息类节点（剩余流量 / 到期 / 官网 等）已被 \`filter\` 过滤掉"
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Publish test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: meow-test-${{ github.run_number }}
+          name: Meow Kernel Test ${{ github.run_number }}
+          files: signed-apks/*.apk
+          fail_on_unmatched_files: true
+          prerelease: true
+          body_path: release-notes.md
+
+      - name: Verify release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: meow-test-${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"'
+          count="$(gh release view "$TAG" --json assets --jq '.assets | length')"
+          if [ "$count" -lt 1 ]; then
+            echo "::error::Release $TAG has no assets."
+            exit 1
+          fi
+          echo "published $count assets"
