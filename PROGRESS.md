@@ -34,18 +34,29 @@
 | `fix/auth-empty-entry` | `authentication: [""]` 空条目按「无凭据」跳过，不再当 Class A 畸形条目硬失败；非空无冒号条目仍报错 |
 
 ### 本次构建
-- `MEOW_REVISION` = `cef849e1b4d1bef91b83bcbdb2bf1b60f6f5fdcd`，`KERNEL_VERSION` = `meow-parity-0.30-1`
-- 触发：`git push origin main:meow-kernel-test` → run `46059873933` **success**（12 分 21 秒）
-- 产物：release `meow-test-10`，`app-arm64-v8a-release-unsigned-signed.apk`，28,148,709 B，
-  sha256 `793ab17947087c946d1ade42c785fa64449fd59635f0c337add782b769bd720c`
-- `librsjni.so` 哈希与 meow-test-9 不同（`e2b6483a…` vs `ebbbfc78…`），确认内核真的重建
-- 本版新增修复：`authentication: ""` 空条目不再硬失败（见下）
+- `MEOW_REVISION` = `cef849e1b4d1bef91b83bcbdb2bf1b60f6f5fdcd`，`KERNEL_VERSION` = `meow-parity-cef849e1`
+- run `46065860186` **success**（15 分 25 秒）→ release `meow-test-13`
+- 产物：`app-arm64-v8a-release-unsigned-signed.apk`，28,148,709 B；
+  versionCode **634**，versionName **`meow-r13-1.3.1`**（首次带上 run 号，可与旧包区分）
+- `librsjni.so` sha256 `72f33385…`，与 meow-test-10（`e2b6483a…`）不同
 
-### 上一版（meow-test-9）
-- `MEOW_REVISION` = `37d32c7919ad85527b9e8c87923fd9ce4d23d75e`，run `46056760595` success
-- 产物 sha256 `63b7eb8187401106984b4f48c3a0cb36bda29c26da7f4998a94ded0955ca19d2`
-- 真机结果：Car 与 Sntp 订阅成功加载（分享链接解析生效），但首次导入报
-  `authentication: malformed entry ""`，配置列表为空；开代理后强制刷新才正常
+#### 分发链路上的两个坑（重要，勿再踩）
+1. **连续两版 versionName/versionCode 完全相同**（都是 `1.3.1-merge` / 628），安装后无法
+   分辨装的是哪一版，导致「修好了但看起来没修好」。现在 workflow 用 sed 把
+   `ProjectConfig.VERSION_NAME` 改成 `meow-r<run>-1.3.1`。
+2. **不能用整文件哈希校验 APK 里的 .so**：AGP 打包 release 会 strip native 调试符号，
+   AAR 与 APK 内的同名 .so 必然不同。现在改为比较 `.text` 段（`llvm-objcopy -O binary
+   --only-section=.text` 后哈希），不一致就让构建失败——这道闸门能挡住「Gradle 复用了
+   旧 AAR」这类事故。AAR 坐标同时改为含源码 SHA（`meow-parity-cef849e1`），从坐标层面
+   排除缓存命中。
+3. **Android 补丁树不能在 host 上编译**（`meow-dns` 引用只在 `cfg(target_os="android")`
+   下存在的 `doh_h2` 字段），因此 `cargo test` 不能作为本工作流的门禁；内核单测只能
+   在 Android target 上跑。
+
+### 上一版（meow-test-10 / meow-test-9）
+- test-10：`cef849e1`，含 auth 空条目修复；真机仍报 `authentication: malformed entry ""`
+  ——包体无法区分，疑为实际安装的是 test-9
+- test-9：`37d32c79`，Car 与 Sntp 可加载（分享链接解析生效），但首次导入报 auth 错误
 
 ### 已知未修（非阻断）
 - provider `override.skip-cert-verify` 会写到每个成员节点上，`ss` 类型不认该键，
