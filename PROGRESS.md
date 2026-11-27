@@ -33,9 +33,24 @@
 | `test/provider-parity-0.30` | 上述三项 cherry-pick 到 `8e4e9484`，供 AAR 构建（`MEOW_REVISION` 指向它） |
 
 ### 本次构建
-- `MEOW_REVISION` = `3c343c6773c737ecb9426677d8ec507c1f843372`，`KERNEL_VERSION` = `meow-parity-0.30-1`
-- 触发：`git push origin main:meow-kernel-test` → run `46053584358`（Build Meow Kernel Test APK）
-- 同分支另有 `46053584440`（Build Release APKs），因缺 signing secrets 必然失败，**属既有噪声，忽略**
+- `MEOW_REVISION` = `37d32c7919ad85527b9e8c87923fd9ce4d23d75e`，`KERNEL_VERSION` = `meow-parity-0.30-1`
+- 触发：`git push origin main:meow-kernel-test`
+- 结果：run `46056760595` **success**（约 12 分钟）→ release `meow-test-9`
+- 产物：`app-arm64-v8a-release-unsigned-signed.apk`，28,148,709 B，
+  sha256 `63b7eb8187401106984b4f48c3a0cb36bda29c26da7f4998a94ded0955ca19d2`
+- 校验：包名 `org.asterisk.zcc.ameta.dev`，versionCode 628，versionName `1.3.1-merge`，
+  签名 `CN=AsteriskMETA HevFix Test`，`lib/arm64-v8a/librsjni.so` 27.4 MB；
+  二进制内含 `fancy-regex-0.16.2` 与 `no share link could be parsed` 字符串，
+  确认三项修复都进了内核。
+
+#### 失败记录（已修，勿重复踩）
+1. run `46053584358` / `46054734547` / `46055649424` 连续失败：真实原因是 `provider_payload.rs:395`
+   在 ws 分支把 `host` move 进 headers，TLS 块又 `host.clone()` → E0382。
+   修复提交 `f9ab085c`（`feat/provider-share-link-payload`）与 `37d32c79`（parity，cherry-pick）。
+   同时修正 hysteria2 测试断言（链接给的是 `cfn`，断言写了 `xyz`）。
+2. 日志一度完全不可见：`softprops/action-gh-release@v2` 上传固定 tag 的 release 资产，
+   且 `build.log` 不存在时报 `size must be >= 1` 直接失败。现已改为
+   `actions/upload-artifact@v4` + 失败时把日志尾部镜像到 `ci-logs` 分支（匿名可 fetch）。
 
 ### 踩坑备忘
 - 本地无 cmake/clang，Gradle 发行版下载被墙 → **只能云端构建**。
