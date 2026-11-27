@@ -28,7 +28,9 @@ env:
   # ivy repository.
   MEOW_REPOSITORY: https://github.com/Roiyaru/meow-rs
   MEOW_REVISION: cef849e1b4d1bef91b83bcbdb2bf1b60f6f5fdcd
-  KERNEL_VERSION: meow-parity-0.30-1
+  # The AAR version carries the source revision, so Gradle can never resolve a
+  # previously cached artifact for a different kernel source.
+  KERNEL_VERSION: meow-parity-cef849e1
 
 jobs:
   build:
@@ -326,14 +328,26 @@ jobs:
           apk="$(ls signed-apks/*.apk | head -n 1)"
           unzip -o -q "$apk" 'lib/arm64-v8a/librsjni.so' -d "$verify/apk"
           packaged="$verify/apk/lib/arm64-v8a/librsjni.so"
-
           for f in "$built" "$packaged"; do
             [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
           done
-          a="$(sha256sum "$built" | cut -d' ' -f1)"
-          b="$(sha256sum "$packaged" | cut -d' ' -f1)"
-          echo "built AAR kernel : $a"
-          echo "packaged in APK  : $b"
+
+          # AGP strips native debug symbols when packaging a release, so the two
+          # files never hash equal. Compare `.text` — the code the strip leaves
+          # untouched — which is what actually changed between kernel revisions.
+          objcopy="$(find "$ANDROID_HOME/ndk" -type f -name llvm-objcopy | sort -V | tail -n 1)"
+          if [ -z "$objcopy" ]; then
+            echo "::error::llvm-objcopy not found in the NDK"
+            exit 1
+          fi
+          text_hash() {
+            "$objcopy" -O binary --only-section=.text "$1" "$1.text" >/dev/null 2>&1
+            sha256sum "$1.text" | cut -d' ' -f1
+          }
+          a="$(text_hash "$built")"
+          b="$(text_hash "$packaged")"
+          echo "built AAR .text  : $a ($(stat -c%s "$built") bytes)"
+          echo "packaged APK .text: $b ($(stat -c%s "$packaged") bytes)"
           if [ "$a" != "$b" ]; then
             echo "::error::The APK carries a different kernel than the one built in this run (stale AAR cache?)"
             exit 1
@@ -342,7 +356,8 @@ jobs:
             echo ""
             echo "### 内核一致性"
             echo ""
-            echo "- \`librsjni.so\` sha256 \`$b\`，与本 run 编译的 AAR 一致"
+            echo "- \`librsjni.so\` 的 \`.text\` 段 sha256 \`$b\`，与本 run 编译的 AAR 逐字节一致（已排除 AGP strip 的影响）"
+            echo "- AAR 版本 \`${KERNEL_VERSION}\`（含源码修订前 8 位）"
             echo "- versionName = \`meow-r${GITHUB_RUN_NUMBER}-1.3.1\`，安装后可在「应用信息」核对"
           } >> "$GITHUB_STEP_SUMMARY"
 
